@@ -16,6 +16,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build-time placeholder to satisfy env validation during `next build`.
+# Runtime value is still provided by docker-compose env/.env.
+ARG DATABASE_URL=postgresql://image:image@localhost:5432/image
+ENV DATABASE_URL=${DATABASE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
