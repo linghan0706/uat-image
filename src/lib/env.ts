@@ -76,6 +76,7 @@ export const env = {
   synologyShareRoot: process.env.SYNOLOGY_SHARE_ROOT ?? "/",
   webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS ?? 15000),
+  dbPoolMax: Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 3)),
   dbConnectTimeoutMs: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? process.env.REQUEST_TIMEOUT_MS ?? 15000),
   dbQueryTimeoutMs: Number(process.env.DB_QUERY_TIMEOUT_MS ?? process.env.REQUEST_TIMEOUT_MS ?? 15000),
   defaultModelTimeoutSec: Number(process.env.DEFAULT_MODEL_TIMEOUT_SEC ?? 90),

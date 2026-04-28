@@ -14,7 +14,7 @@ export const db =
   globalForPg.pgPool ??
   new Pool({
     connectionString: requireDatabaseUrl(),
-    max: process.env.NODE_ENV === "development" ? 10 : 20,
+    max: env.dbPoolMax,
     connectionTimeoutMillis: env.dbConnectTimeoutMs,
     query_timeout: env.dbQueryTimeoutMs,
   });
