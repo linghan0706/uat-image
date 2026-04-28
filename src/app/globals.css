@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+:root {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-sidebar-bg: #0f172a;
+  --color-sidebar-text: #e2e8f0;
+  --color-sidebar-hover: #1e293b;
+  --color-sidebar-active: #334155;
+  --color-sidebar-accent: #38bdf8;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+* {
+  scrollbar-color: #3f3f46 #18181b;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.24);
+  color: #f4f4f5;
+}
+
+@keyframes inspector-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 18px 48px rgba(8, 47, 73, 0.45),
+      0 0 0 1px rgba(103, 232, 249, 0.28),
+      0 0 18px rgba(34, 211, 238, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 22px 64px rgba(6, 182, 212, 0.36),
+      0 0 0 1px rgba(165, 243, 252, 0.58),
+      0 0 34px rgba(34, 211, 238, 0.36);
+  }
+}
+
+.inspector-reveal-tab {
+  animation: inspector-breathe 2.4s ease-in-out infinite;
+}
+
+.inspector-reveal-tab:hover,
+.inspector-reveal-tab:focus-visible {
+  animation-play-state: paused;
+}
+
+.workbench-shell {
+  --workbench-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.workbench-main {
+  position: relative;
+  contain: layout paint;
+  isolation: isolate;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition:
+    background-position 360ms var(--workbench-ease);
+}
+
+.workbench-shell[data-animating="true"] .workbench-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.1), transparent 62%);
+  pointer-events: none;
+  animation: workbench-mask-sheen 420ms ease;
+}
+
+@keyframes workbench-mask-sheen {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.workbench-queue-pane {
+  flex: 0 0 300px;
+  min-width: 0;
+  width: 300px;
+  max-width: 300px;
+  transition: flex-basis 360ms var(--workbench-ease),
+    max-width 360ms var(--workbench-ease),
+    border-color 360ms ease;
+}
+
+.workbench-queue-content {
+  width: 300px;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 220ms ease,
+    transform 360ms var(--workbench-ease);
+}
+
+.workbench-queue-reveal {
+  flex: 0 0 0;
+  min-width: 0;
+  width: 0;
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition:
+    flex-basis 360ms var(--workbench-ease),
+    max-width 360ms var(--workbench-ease),
+    opacity 240ms ease,
+    transform 360ms var(--workbench-ease),
+    color 180ms ease;
+}
+
+.workbench-inspector-pane {
+  flex: 0 0 680px;
+  min-width: 0;
+  width: 680px;
+  max-width: 680px;
+  transition: flex-basis 360ms var(--workbench-ease),
+    max-width 360ms var(--workbench-ease),
+    border-color 360ms ease;
+}
+
+.workbench-inspector-content {
+  width: 680px;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 220ms ease,
+    transform 360ms var(--workbench-ease);
+}
+
+@media (min-width: 1536px) {
+  .workbench-inspector-pane {
+    flex-basis: 760px;
+    width: 760px;
+    max-width: 760px;
+  }
+
+  .workbench-inspector-content {
+    width: 760px;
+  }
+}
+
+.workbench-shell[data-queue-collapsed="true"] .workbench-queue-pane {
+  flex-basis: 0;
+  width: 0;
+  max-width: 0;
+  border-right-color: transparent;
+}
+
+.workbench-shell[data-queue-collapsed="true"] .workbench-queue-content {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.workbench-shell[data-queue-collapsed="true"] .workbench-queue-reveal {
+  flex-basis: 36px;
+  width: 36px;
+  max-width: 36px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.workbench-shell[data-panel-collapsed="true"] .workbench-inspector-pane {
+  flex-basis: 0;
+  width: 0;
+  max-width: 0;
+  border-left-color: transparent;
+}
+
+.workbench-shell[data-panel-collapsed="true"] .workbench-inspector-content {
+  opacity: 0;
+  transform: translateX(18px);
+}
+
+.workbench-shell[data-panel-collapsed="true"] .inspector-reveal-tab {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+}
+
+.workbench-shell[data-panel-collapsed="false"] .inspector-reveal-tab {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(18px, -50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-reveal-tab,
+  .workbench-queue-pane,
+  .workbench-queue-content,
+  .workbench-queue-reveal,
+  .workbench-inspector-pane,
+  .workbench-inspector-content,
+  .workbench-main {
+    animation: none;
+    transition-duration: 1ms;
+  }
+}

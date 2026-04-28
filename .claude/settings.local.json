@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s --max-time 10 \"http://183.62.235.42:5000/webapi/query.cgi?api=SYNO.API.Info&version=1&method=query\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/v1/batch-jobs)",
+      "Bash(NEXT_TURBOPACK_TEMP=\"/tmp/next-turbopack\" npm run:*)",
+      "Bash(npx next:*)",
+      "Bash(mkdir -p /tmp/next-cache)",
+      "Bash(ln -sf /tmp/next-cache /mnt/c/Users/lingh/Desktop/image/.next)",
+      "Bash(curl -s http://localhost:3000/api/v1/batch-jobs)",
+      "Bash(curl -s -H \"Accept: application/json\" http://localhost:3000/api/v1/batch-jobs)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(NEXT_DIST_DIR=\"/tmp/next-dist-image\" npx next dev)",
+      "Bash(curl -s -w \"\\\\nHTTP_CODE: %{http_code}\" http://localhost:3000/api/v1/batch-jobs)",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" http://localhost:3000/api/v1/batch-jobs?page=1\\\\&page_size=1)",
+      "Bash(node:*)",
+      "Bash(pkill -f \"generate-worker\")"
+    ]
+  }
+}

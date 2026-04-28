@@ -1,0 +1,7 @@
+﻿name,gender,age_band,build,complexion,face,hair,outfit,accessories,extra_visual,reference_prompt,negative_prompt,ext_params_json
+林婉,female,青年,中等偏瘦 身高165cm,白皙,鹅蛋脸 冷静克制眉眼 右眉尾一颗小痣,黑色齐肩短发 空气刘海,深灰色风衣 黑色高领针织衫 黑色直筒长裤 尖头短靴,银色耳钉 素银戒指 咖色真皮手表,,"A raw hyper-realistic cinematic portrait, natural skin texture, restrained soft light","low quality, blurry, watermark, text, logo",
+陈默,male,中年,中等微胖 肩宽背阔,小麦色,方脸 络腮胡茬 眼神疲惫但坚定,褐色短卷发 略显凌乱,深棕旧皮夹克 灰色圆领T恤 深蓝直筒牛仔裤 磨旧马丁靴,牛皮腰带 圆盘银色机械表,左手背一道淡旧伤疤,"shot on 35mm film, visible grain, subdued cinematic palette",,
+苏清辞,female,少年,纤细挺拔 身形清瘦,白皙,瓜子脸 远山眉 杏眸 微挑嘴角,乌黑长发 半束发 垂坠银簪,月白色交领广袖长裙 外搭浅青色薄纱比甲 绣云纹,素银步摇 玉色腰佩 白玉手镯,裙摆与袖口绣有极浅青绿竹叶纹(无文字),"wuxia cdrama still, ethereal atmosphere, silk texture, soft rim light","modern clothes, anachronism, jewelry with letters",
+NPC-铁匠老程,male,老年,魁梧结实 双臂粗壮,古铜色,方脸 浓眉 络腮白须 左额一道锻造旧疤,花白短寸 略带卷曲,深褐粗麻短打 黑色熟牛皮围裙 灰布长裤 旧皮靴,黄铜护臂 皮质工具腰带,右手虎口老茧明显,"concept art, painterly brush, chiaroscuro, AAA game NPC","low detail, soft focus, smiling, cute",
+银翼,nonbinary,青年,修长挺拔 中性气质,冷白,轮廓锋利 薄唇 冷灰色瞳,及肩银白色直发 一侧编细辫,哑光黑色机能长外套 立领 深灰战术长裤 战术靴,金属肩扣 黑色战术手套 项挂一枚无字金属吊坠,左锁骨有浅色旧疤,"dark fantasy concept, low key lighting, dramatic rim light, metallic texture","text, logo, readable symbols, bright pastel colors",
+匿名路人,unknown,青年,中等身形,未知,面部轮廓标准,黑色短发,灰色连帽卫衣 黑色运动长裤 白色运动鞋,无,,"cinematic realism, natural light",,

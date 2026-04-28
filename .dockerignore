@@ -1,0 +1,11 @@
+node_modules
+.next
+tmp
+.local-nas
+.tmp
+.git
+.gitignore
+.env*
+*.md
+.claude
+.vscode
