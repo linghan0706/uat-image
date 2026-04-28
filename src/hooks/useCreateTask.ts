@@ -30,7 +30,7 @@ export function useCreateTask(callbacks: {
   const [portraitSeed, setPortraitSeed] = useState("");
   const [portraitModelKey, setPortraitModelKey] = useState("");
   const [portraitModelOptions, setPortraitModelOptions] = useState<ModelOption[]>([]);
-  const [portraitBackgroundMode, setPortraitBackgroundMode] = useState<PortraitBackgroundMode>("studio");
+  const [portraitBackgroundMode, setPortraitBackgroundMode] = useState<PortraitBackgroundMode>("scene");
 
   const [threeModelKey, setThreeModelKey] = useState("");
   const [threeModelOptions, setThreeModelOptions] = useState<ModelOption[]>([]);
@@ -43,17 +43,6 @@ export function useCreateTask(callbacks: {
   const [styleKey, setStyleKey] = useState<string | null>(null);
 
   const importTask = useImportTask();
-
-  const missingSceneDescriptionCount = useMemo(
-    () =>
-      capability === "PORTRAIT" && portraitBackgroundMode === "scene"
-        ? importTask.prompts.filter((prompt) => {
-            const sourceType = importTask.parseResult?.source_type;
-            return (sourceType === "csv" || sourceType === "xlsx") && !prompt.scene_description?.trim();
-          }).length
-        : 0,
-    [capability, importTask.parseResult?.source_type, importTask.prompts, portraitBackgroundMode],
-  );
 
   const buildParams = useCallback(() => {
     if (capability === "PORTRAIT") {
@@ -219,11 +208,6 @@ export function useCreateTask(callbacks: {
       return;
     }
 
-    if (missingSceneDescriptionCount > 0) {
-      setErrorText(`场景背景模式下有 ${missingSceneDescriptionCount} 条缺少场景描述，请补全 CSV 后重新解析。`);
-      return;
-    }
-
     if (importTask.prompts.length === 0) {
       const mode = resolveImportSourceMode();
       if (!mode) {
@@ -255,7 +239,7 @@ export function useCreateTask(callbacks: {
     } finally {
       setSubmitLoading(false);
     }
-  }, [importTask.prompts, importTask.parseResult, resolveImportSourceMode, submitAsyncImportTask, taskName, folderName, capability, dedupe, buildParams, styleKey, callbacks, missingSceneDescriptionCount]);
+  }, [importTask.prompts, importTask.parseResult, resolveImportSourceMode, submitAsyncImportTask, taskName, folderName, capability, dedupe, buildParams, styleKey, callbacks]);
 
   const sourceModeStats = useMemo(() => {
     return importTask.prompts.reduce<Record<PromptSourceMode, number>>(
@@ -271,8 +255,7 @@ export function useCreateTask(callbacks: {
   const canSubmitCreate =
     capability === "THREE_VIEW"
       ? false
-      : (importTask.prompts.length > 0 || resolveImportSourceMode() !== null) &&
-        (importTask.prompts.length === 0 || missingSceneDescriptionCount === 0);
+      : importTask.prompts.length > 0 || resolveImportSourceMode() !== null;
 
   return {
     // Capability
@@ -333,6 +316,5 @@ export function useCreateTask(callbacks: {
     setErrorText,
     // Stats
     sourceModeStats,
-    missingSceneDescriptionCount,
   };
 }

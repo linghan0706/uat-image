@@ -57,12 +57,6 @@ export const createBatchJobSchema = z
   })
   .superRefine((val, ctx) => {
     const hasSourcePortraits = val.source_portrait_ids.length > 0;
-    const portraitBackgroundMode =
-      typeof val.params.background_mode === "string"
-        ? val.params.background_mode
-        : typeof val.params.portrait_background_mode === "string"
-          ? val.params.portrait_background_mode
-          : "studio";
     if (val.capability === "THREE_VIEW" && !hasSourcePortraits) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -132,18 +126,6 @@ export const createBatchJobSchema = z
             message:
               "character_profile.gender must be explicit (male, female, or nonbinary) for PORTRAIT prompts.",
             path: ["prompts", index, "character_profile", "gender"],
-          });
-        }
-        if (
-          portraitBackgroundMode === "scene" &&
-          (val.source_type === "csv" || val.source_type === "xlsx") &&
-          !prompt.scene_description?.trim()
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              "scene_description is required for CSV/XLSX PORTRAIT prompts when background_mode=scene.",
-            path: ["prompts", index, "scene_description"],
           });
         }
       });

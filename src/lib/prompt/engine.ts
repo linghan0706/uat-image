@@ -197,9 +197,12 @@ const appendPortraitGenderNegative = (
 
 export const assemble = (input: AssembleInput): AssembleOutput => {
   const isThreeView = input.preset === "THREE_VIEW";
-  const portraitBackgroundMode = isThreeView
+  const requestedPortraitBackgroundMode = isThreeView
     ? "studio"
     : normalizePortraitBackgroundMode(input.portraitBackgroundMode);
+  const requestedSceneDescription = !isThreeView ? input.sceneDescription?.trim() || null : null;
+  const portraitBackgroundMode =
+    requestedPortraitBackgroundMode === "scene" && requestedSceneDescription ? "scene" : "studio";
 
   // THREE_VIEW 的视觉一致性由定妆照参考图（i2i）保证，不再依赖 CharacterProfile。
   // PORTRAIT/SCENE_CONCEPT 仍要求完整的结构化 profile。
@@ -225,7 +228,7 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
   const part4 = isThreeView ? "" : resolvePart4(resolvedStyle, input.part4);
   const sceneDescription =
     !isThreeView && portraitBackgroundMode === "scene"
-      ? input.sceneDescription?.trim() || null
+      ? requestedSceneDescription
       : null;
 
   const genderPriorityLock = profileApplicable ? buildGenderPriorityLock(input.profile!) : "";

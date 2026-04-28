@@ -110,7 +110,7 @@ register("PORTRAIT + 合法 character_profile → 应通过", () => {
   assert.equal(result.success, true, `应通过，实际 issues=${result.success ? "" : JSON.stringify(result.error.issues)}`);
 });
 
-register("PORTRAIT 场景模式 + CSV 缺 scene_description → 应失败", () => {
+register("PORTRAIT 场景模式 + CSV 缺 scene_description → 应通过，由生成阶段回落影棚", () => {
   const result = createBatchJobSchema.safeParse({
     folder_name: "test-folder",
     capability: "PORTRAIT",
@@ -118,13 +118,7 @@ register("PORTRAIT 场景模式 + CSV 缺 scene_description → 应失败", () =
     params: { background_mode: "scene" },
     prompts: [basePromptWithProfile],
   });
-  assert.equal(result.success, false, "CSV 场景模式缺场景描述应当被 schema 拒绝");
-  if (!result.success) {
-    const hit = result.error.issues.some(
-      (issue) => issue.path.join(".") === "prompts.0.scene_description",
-    );
-    assert.ok(hit, `未命中 scene_description issue，实际=${JSON.stringify(result.error.issues)}`);
-  }
+  assert.equal(result.success, true, `应通过，实际 issues=${result.success ? "" : JSON.stringify(result.error.issues)}`);
 });
 
 register("PORTRAIT 场景模式 + 文本来源缺 scene_description → 允许 Claude 落空", () => {

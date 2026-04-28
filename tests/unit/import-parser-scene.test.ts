@@ -43,6 +43,16 @@ register("CSV dedupe 会保留同角色不同场景", async () => {
   );
 });
 
+register("CSV 少尾列不应导致整文件解析失败", async () => {
+  const csv = [
+    "角色名,性别,年龄段,身高体型,场景描述,参考提示词,负向提示词,扩展参数json",
+    "林婉,female,青年,中等偏瘦,新闻编辑部外的玻璃走廊,cinematic realism",
+  ].join("\n");
+  const result = await parsePromptFile(toCsvFile(csv), false, { parseMode: "local" });
+  assert.equal(result.valid_count, 1);
+  assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
+});
+
 (async () => {
   let failed = 0;
   for (const item of cases) {

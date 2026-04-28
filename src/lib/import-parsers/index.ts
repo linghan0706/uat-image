@@ -332,6 +332,7 @@ const parseRecordRows = (
 const parseCsv = (rawText: string, dedupe: boolean, options?: ParseOptions): ParseResult => {
   const records = parseCsvSync(rawText, {
     columns: true,
+    relax_column_count_less: true,
     skip_empty_lines: true,
     trim: true,
   }) as Array<Record<string, unknown>>;

@@ -170,7 +170,7 @@ test("PORTRAIT prompt 写成无字版单人试装照而非设定表剧照海报"
   assert.ok(prompt.length <= MAX_PROMPT_LENGTH, `prompt length ${prompt.length} exceeds ${MAX_PROMPT_LENGTH}`);
 });
 
-test("PORTRAIT 场景背景模式要求人物居中且全身展示", () => {
+test("PORTRAIT 场景背景模式缺少场景描述时回落影棚", () => {
   const { prompt, negative_prompt, prompt_snapshot } = assemble({
     preset: "PORTRAIT",
     style_key: "xuanhuan_live_action",
@@ -178,7 +178,22 @@ test("PORTRAIT 场景背景模式要求人物居中且全身展示", () => {
     profile: sampleProfile,
     modelKey: "sd3",
   });
-  assert.ok(prompt.includes(PORTRAIT_SCENE_PART1), "场景模式必须使用场景背景定妆照模板");
+  assert.ok(prompt.includes(PORTRAIT_PART1), "缺少场景描述时必须回落影棚模板");
+  assert.ok(!prompt.includes(PORTRAIT_SCENE_PART1), "缺少场景描述时不应使用场景背景模板");
+  assert.equal(prompt_snapshot.portrait_background_mode, "studio");
+  assert.ok(negative_prompt.includes("scenic background"), "回落影棚后负向词应禁止场景背景");
+});
+
+test("PORTRAIT 场景背景模式有场景描述时要求人物居中且全身展示", () => {
+  const { prompt, negative_prompt, prompt_snapshot } = assemble({
+    preset: "PORTRAIT",
+    style_key: "xuanhuan_live_action",
+    portraitBackgroundMode: "scene",
+    sceneDescription: "古旧书房，木质书架和窗边暖光作为背景层",
+    profile: sampleProfile,
+    modelKey: "sd3",
+  });
+  assert.ok(prompt.includes(PORTRAIT_SCENE_PART1), "有场景描述时必须使用场景背景定妆照模板");
   assert.match(prompt, /人物站在场景背景图中央/);
   assert.match(prompt, /full body visible from head to toe/);
   assert.equal(prompt_snapshot.portrait_background_mode, "scene");
