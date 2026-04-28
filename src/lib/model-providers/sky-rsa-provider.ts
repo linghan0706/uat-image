@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { isHttpTimeoutError, requestBytes, requestText, type ServerHttpResponse } from "@/lib/http/client";
+import { logger } from "@/lib/logger";
 import { buildSkyRsaAuthHeaders } from "@/lib/model-providers/sky-rsa-auth";
 import type {
   GeneratedArtifact,
@@ -35,6 +36,21 @@ const parseSizeParam = (params: Record<string, unknown>): { width: number; heigh
 };
 
 const normalizeModelKey = (value: string) => value.trim().toLowerCase();
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+const sizeToAspectRatio = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d+)\s*[xX×]\s*(\d+)$/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+};
 
 const extractReferenceImageUrl = (params: PlainRecord): string | null => {
   const direct = params.reference_image_url;
@@ -75,8 +91,15 @@ const buildTextToImageBody = (input: GenerateImageInput, params: PlainRecord, ch
 /** MJ 使用原生 `--no a, b, c` 语法表达反向词，写入 prompt 末尾；不传 config.negative_prompt */
 const buildMjTextToImageBody = (input: GenerateImageInput, params: PlainRecord, channel: string) => {
   const config = { ...params };
-  // 防止 sky 网关把 negative_prompt 字段透传给 MJ 导致被忽略
+  const aspectRatio = typeof config.aspect_ratio === "string" ? config.aspect_ratio : sizeToAspectRatio(config.size);
+  // MJ 网关对扩散参数敏感：负向词放入 --no，比例用 aspect_ratio，避免透传 cfg/steps/size。
   delete config.negative_prompt;
+  delete config.cfg;
+  delete config.steps;
+  delete config.size;
+  if (aspectRatio) {
+    config.aspect_ratio = aspectRatio;
+  }
 
   const basePrompt = input.prompt.trim();
   const negativeTerms = (input.negativePrompt ?? "")
@@ -296,6 +319,41 @@ const parseResponseJson = (raw: string, contentType: string) => {
   return JSON.parse(raw) as PlainRecord;
 };
 
+const extractProviderMessage = (payload: PlainRecord): string => {
+  const candidates = [
+    payload.message,
+    payload.msg,
+    payload.error,
+    (payload.data as PlainRecord | undefined)?.message,
+    (payload.data as PlainRecord | undefined)?.msg,
+    (payload.data as PlainRecord | undefined)?.error,
+    (payload.result as PlainRecord | undefined)?.message,
+    (payload.result as PlainRecord | undefined)?.msg,
+    (payload.result as PlainRecord | undefined)?.error,
+  ];
+  const hit = candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (hit) return hit;
+  return "Model returned business error.";
+};
+
+const truncate = (value: string, max = 800) => (value.length > max ? `${value.slice(0, max)}...` : value);
+
+const summarizeRequestBody = (body: unknown) => {
+  if (!body || typeof body !== "object") return body;
+  const record = body as PlainRecord;
+  return {
+    type: record.type,
+    channel: record.channel,
+    model: record.model,
+    is_stream: record.is_stream,
+    is_async: record.is_async,
+    prompt_len: typeof record.prompt === "string" ? record.prompt.length : null,
+    prompt_head: typeof record.prompt === "string" ? truncate(record.prompt, 240) : null,
+    has_image: typeof record.image === "string" && record.image.length > 0,
+    config: record.config,
+  };
+};
+
 const buildRequestBody = (input: GenerateImageInput, spec: ModelSpec | null) => {
   const params = { ...input.params };
   // Remove view_set from params sent to model — three-view is generated as a single image
@@ -358,11 +416,33 @@ export class SkyRsaModelProvider implements ModelProvider {
     const payload = parseResponseJson(response.data, response.headers.get("content-type") || "");
     const code = payload.code;
     if (!response.ok) {
-      const message = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+      const message = extractProviderMessage(payload) || `HTTP ${response.status}`;
+      logger.warn(
+        {
+          providerRequestId: requestId,
+          status: response.status,
+          targetPath,
+          modelKey: input.modelKey,
+          payload,
+          request: summarizeRequestBody(body),
+        },
+        "Model request failed",
+      );
       throw new AppError("E_INTERNAL", `Model request failed: ${message}`, response.status);
     }
     if (code !== undefined && Number(code) !== 0) {
-      const message = typeof payload.message === "string" ? payload.message : "Model returned business error.";
+      const message = extractProviderMessage(payload);
+      logger.warn(
+        {
+          providerRequestId: requestId,
+          code,
+          targetPath,
+          modelKey: input.modelKey,
+          payload,
+          request: summarizeRequestBody(body),
+        },
+        "Model returned business error",
+      );
       throw new AppError("E_INTERNAL", `Model business error(${code}): ${message}`, 502);
     }
 
