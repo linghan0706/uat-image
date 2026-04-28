@@ -6,6 +6,7 @@ import type {
   FunctionalCapability,
   ImportTaskSubmitMode,
   ModelOption,
+  PortraitBackgroundMode,
   PromptSourceMode,
 } from "@/lib/api/image-workflow.types";
 import { getModelOptions } from "@/lib/api/model-options";
@@ -29,6 +30,7 @@ export function useCreateTask(callbacks: {
   const [portraitSeed, setPortraitSeed] = useState("");
   const [portraitModelKey, setPortraitModelKey] = useState("");
   const [portraitModelOptions, setPortraitModelOptions] = useState<ModelOption[]>([]);
+  const [portraitBackgroundMode, setPortraitBackgroundMode] = useState<PortraitBackgroundMode>("studio");
 
   const [threeModelKey, setThreeModelKey] = useState("");
   const [threeModelOptions, setThreeModelOptions] = useState<ModelOption[]>([]);
@@ -42,11 +44,23 @@ export function useCreateTask(callbacks: {
 
   const importTask = useImportTask();
 
+  const missingSceneDescriptionCount = useMemo(
+    () =>
+      capability === "PORTRAIT" && portraitBackgroundMode === "scene"
+        ? importTask.prompts.filter((prompt) => {
+            const sourceType = importTask.parseResult?.source_type;
+            return (sourceType === "csv" || sourceType === "xlsx") && !prompt.scene_description?.trim();
+          }).length
+        : 0,
+    [capability, importTask.parseResult?.source_type, importTask.prompts, portraitBackgroundMode],
+  );
+
   const buildParams = useCallback(() => {
     if (capability === "PORTRAIT") {
       const modelKey = portraitModelKey.trim();
       return {
         ...(modelKey ? { model_key: modelKey } : {}),
+        background_mode: portraitBackgroundMode,
         count: portraitCount,
         negative_prompt: portraitNegative || undefined,
         seed: portraitSeed ? Number(portraitSeed) : undefined,
@@ -62,7 +76,7 @@ export function useCreateTask(callbacks: {
       };
     }
     return {};
-  }, [capability, portraitCount, portraitNegative, portraitSeed, portraitModelKey, threeModelKey, threeNegative, threeSeed, threeSize]);
+  }, [capability, portraitBackgroundMode, portraitCount, portraitNegative, portraitSeed, portraitModelKey, threeModelKey, threeNegative, threeSeed, threeSize]);
 
   const loadModelOptions = useCallback(async () => {
     if (capability === "THREE_VIEW") {
@@ -205,6 +219,11 @@ export function useCreateTask(callbacks: {
       return;
     }
 
+    if (missingSceneDescriptionCount > 0) {
+      setErrorText(`场景背景模式下有 ${missingSceneDescriptionCount} 条缺少场景描述，请补全 CSV 后重新解析。`);
+      return;
+    }
+
     if (importTask.prompts.length === 0) {
       const mode = resolveImportSourceMode();
       if (!mode) {
@@ -236,7 +255,7 @@ export function useCreateTask(callbacks: {
     } finally {
       setSubmitLoading(false);
     }
-  }, [importTask.prompts, importTask.parseResult, resolveImportSourceMode, submitAsyncImportTask, taskName, folderName, capability, dedupe, buildParams, styleKey, callbacks]);
+  }, [importTask.prompts, importTask.parseResult, resolveImportSourceMode, submitAsyncImportTask, taskName, folderName, capability, dedupe, buildParams, styleKey, callbacks, missingSceneDescriptionCount]);
 
   const sourceModeStats = useMemo(() => {
     return importTask.prompts.reduce<Record<PromptSourceMode, number>>(
@@ -250,7 +269,10 @@ export function useCreateTask(callbacks: {
   }, [importTask.prompts]);
 
   const canSubmitCreate =
-    capability === "THREE_VIEW" ? false : importTask.prompts.length > 0 || resolveImportSourceMode() !== null;
+    capability === "THREE_VIEW"
+      ? false
+      : (importTask.prompts.length > 0 || resolveImportSourceMode() !== null) &&
+        (importTask.prompts.length === 0 || missingSceneDescriptionCount === 0);
 
   return {
     // Capability
@@ -281,6 +303,8 @@ export function useCreateTask(callbacks: {
     portraitModelKey,
     setPortraitModelKey,
     portraitModelOptions,
+    portraitBackgroundMode,
+    setPortraitBackgroundMode,
     // Three-view params
     threeModelKey,
     setThreeModelKey,
@@ -309,5 +333,6 @@ export function useCreateTask(callbacks: {
     setErrorText,
     // Stats
     sourceModeStats,
+    missingSceneDescriptionCount,
   };
 }

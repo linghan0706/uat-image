@@ -1,5 +1,6 @@
 export type Capability = "PORTRAIT" | "THREE_VIEW" | "SCENE_CONCEPT";
 export type FunctionalCapability = "PORTRAIT" | "THREE_VIEW";
+export type PortraitBackgroundMode = "studio" | "scene";
 export type ImportTaskSubmitMode = "PARSE_ONLY" | "CREATE_BATCH";
 
 export type PromptSourceMode = "template";
@@ -14,6 +15,8 @@ export type PromptBlocks = {
   part3?: string | null;
   /** User-provided low-priority reference words for PORTRAIT only. */
   part4?: string | null;
+  /** Snapshot-only: concrete scene background used by PORTRAIT scene mode. */
+  scene_description?: string | null;
   style_key?: string | null;
 };
 
@@ -39,6 +42,7 @@ export type PromptRow = {
   prompt_blocks?: PromptBlocks;
   character_profile?: CharacterProfile | null;
   style_key?: string | null;
+  scene_description?: string | null;
 };
 
 export type BatchJob = {
@@ -65,6 +69,7 @@ export type JobItem = {
   character_name: string | null;
   character_profile?: CharacterProfile | null;
   style_key?: string | null;
+  scene_description?: string | null;
   status: string;
   error_code: string | null;
   error_message: string | null;

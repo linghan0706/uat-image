@@ -1,6 +1,6 @@
 import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
 
-import { requireDatabaseUrl } from "@/lib/env";
+import { env, requireDatabaseUrl } from "@/lib/env";
 
 types.setTypeParser(20, (value) => BigInt(value));
 
@@ -15,6 +15,8 @@ export const db =
   new Pool({
     connectionString: requireDatabaseUrl(),
     max: process.env.NODE_ENV === "development" ? 10 : 20,
+    connectionTimeoutMillis: env.dbConnectTimeoutMs,
+    query_timeout: env.dbQueryTimeoutMs,
   });
 
 db.on("connect", (client) => {

@@ -7,10 +7,15 @@
  * - 其它模型走通用扩散版。
  */
 
-import type { FunctionalCapability } from "@/lib/api/image-workflow.types";
+import type {
+  FunctionalCapability,
+  PortraitBackgroundMode,
+} from "@/lib/api/image-workflow.types";
 import {
   DIFFUSION_PORTRAIT_NEGATIVE,
+  DIFFUSION_PORTRAIT_SCENE_NEGATIVE,
   MJ_PORTRAIT_NEGATIVE,
+  MJ_PORTRAIT_SCENE_NEGATIVE,
 } from "@/lib/prompt/negative/portrait";
 import {
   DIFFUSION_THREE_VIEW_NEGATIVE,
@@ -21,6 +26,7 @@ export type NegativeResolveInput = {
   preset: FunctionalCapability;
   modelKey: string;
   userNegative?: string | null;
+  portraitBackgroundMode?: PortraitBackgroundMode;
 };
 
 const isMidjourneyModel = (modelKey: string): boolean => {
@@ -32,6 +38,7 @@ export const resolveNegativePrompt = ({
   preset,
   modelKey,
   userNegative,
+  portraitBackgroundMode = "studio",
 }: NegativeResolveInput): string => {
   const userTrimmed = userNegative?.trim();
   if (userTrimmed) return userTrimmed;
@@ -39,6 +46,9 @@ export const resolveNegativePrompt = ({
   const mj = isMidjourneyModel(modelKey);
   if (preset === "THREE_VIEW") {
     return mj ? MJ_THREE_VIEW_NEGATIVE : DIFFUSION_THREE_VIEW_NEGATIVE;
+  }
+  if (portraitBackgroundMode === "scene") {
+    return mj ? MJ_PORTRAIT_SCENE_NEGATIVE : DIFFUSION_PORTRAIT_SCENE_NEGATIVE;
   }
   return mj ? MJ_PORTRAIT_NEGATIVE : DIFFUSION_PORTRAIT_NEGATIVE;
 };

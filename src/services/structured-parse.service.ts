@@ -28,6 +28,7 @@ type StructuredParsePreset = "PORTRAIT" | "THREE_VIEW";
  */
 export type StructuredPromptCandidate = {
   character_profile: CharacterProfile;
+  scene_description?: string | null;
   part4?: string | null;
   negative_prompt?: string | null;
   ext_params?: Record<string, unknown>;
@@ -231,18 +232,18 @@ const buildSystemInstruction = (preset: StructuredParsePreset, styleKey?: string
     "只允许输出 JSON，不要输出 Markdown、解释、标题、代码块或多余文本。",
     "",
     "【输出 Schema（必须严格遵守字段名）】",
-    '{"prompts":[{"character_profile":{"name":"","gender":"male|female|nonbinary|unknown","age_band":"","build":"","complexion":"","face":"","hair":"","outfit":"","accessories":"","extra_visual":""},"part4":"","negative_prompt":"","ext_params":{}}]}',
+    '{"prompts":[{"character_profile":{"name":"","gender":"male|female|nonbinary|unknown","age_band":"","build":"","complexion":"","face":"","hair":"","outfit":"","accessories":"","extra_visual":""},"scene_description":"","part4":"","negative_prompt":"","ext_params":{}}]}',
     "",
     "【字段规则】",
     "1. 一个独立角色 = 一个 prompts item；禁止合并多个角色，也禁止复制同一角色凑数。若无法为某个角色生成非占位符姓名，则将该角色整体从 prompts 中剔除，而不是用占位符填充。",
     "2. character_profile.name 必填，严禁为空字符串。必须是 2~8 个汉字的简短姓名或中文标签式代号（如 '林婉' '陈默' '陆观' '安德烈' '红衣少女' '银甲骑士' '青袍道士' '老管家'），不是长描述，不得含数字，不得含英文字母。若原文是英文名/拼音名，必须音译或意译为中文名，例如 Lu Guan → 陆观，Andre → 安德烈，Amir → 阿米尔，Chidao Rin → 赤道凛。若原文未给出角色名，根据最显著外观特征简短中文命名。",
     "   反例（严禁输出，视为违规，必须改写或丢弃该条）：'LuGuan' 'Lu Guan' 'Andre' 'Amir' 'ChidaoRin' '角色1' '角色2' '人物 3' 'NPC-A' 'NPC-1' '未命名' '未命名A' 'character1' 'unnamed' '未知' '待定' '无名' 'A' 'B' '甲' '乙'。",
     "   正例：'林婉' '陈默' '红衣少女' '银甲骑士' '青袍道士' '老管家' '持剑青年' '戴面具的女人'。",
-    "3. character_profile.gender 必填，仅允许取值 male / female / nonbinary / unknown 四者之一，但 PORTRAIT/THREE_VIEW 生图只接受明确性别：",
+    "3. character_profile.gender 必填，仅允许取值 male / female / nonbinary / unknown 四者之一：",
     "   a) 若原文明确描述性别（男/女/少男/少女/他/她/先生/女士等）→ male 或 female；",
-    "   b) 若原文未直接描述，必须根据姓名、代词、服饰、称谓、职业等线索进行推断；",
+    "   b) 若原文未直接描述，可根据姓名、代词、服饰、称谓、职业等强线索进行判断；没有可靠线索时输出 unknown，不要硬猜；",
     "   c) 长发、长袍、华服、清秀、俊美不能把男性改成女性；短发、铠甲、战斗职业、中性服饰不能把女性改成男性；",
-    "   d) 仅在完全无法判断时才允许输出 unknown；unknown 会被导入结果标为无效，要求用户补全性别，禁止为了省事而默认 unknown。",
+    "   d) unknown 会被导入结果标为需要用户补全，不能为了通过校验而编造性别。",
     "4. character_profile 其它维度分别填入对应子字段：",
     "   - age_band：年龄段描述（如 '青年' '中年' '少年' '老年'）；",
     "   - build：身高体型（如 '中等偏瘦' '魁梧' '纤细'）；",
@@ -252,14 +253,16 @@ const buildSystemInstruction = (preset: StructuredParsePreset, styleKey?: string
     "   - outfit：服装造型（上装/下装/外套/鞋履的款式/材质/颜色/图案）；",
     "   - accessories：配饰道具（头饰/耳饰/项链/手环/腰带/武器/背包等）；",
     "   - extra_visual：兜底的其它可见特征（疤/胎记/纹身/义肢等），禁止写入风格/构图/指令。",
-    "5. part4 只用于可选的英文参考词或用户指定的参考风格文案；没有就留空字符串。",
-    "6. negative_prompt 只有在原文明确出现反向提示词时才填写；否则留空。",
-    "7. ext_params 不要虚构，没有就空对象。",
-    "8. 语言要求（硬约束，优先级高于任何其它要求）：无论原始文本是中文、英文还是其它语种，character_profile 的所有字段（name / age_band / build / complexion / face / hair / outfit / accessories / extra_visual）以及 negative_prompt 必须输出为简体中文。若原文为英文或其它语种，请做意译/归纳后再填写中文描述，不得直接照抄原文英文。name 字段绝对不能出现 A-Z/a-z。仅 part4 字段允许英文参考词。",
+    "5. scene_description 对齐 CSV 的“场景描述/背景描述/环境描述/定妆场景”列：只填写原文明确给出的角色所处背景环境，例如房间、街道、战场、办公室、建筑、自然环境等；如果原文没有明确场景或只有画风/镜头/构图要求，必须留空字符串，不要硬编。",
+    "6. part4 只用于可选的英文参考词或用户指定的参考风格文案；没有就留空字符串。",
+    "7. negative_prompt 只有在原文明确出现反向提示词时才填写；否则留空。",
+    "8. ext_params 不要虚构，没有就空对象。",
+    "9. 语言要求（硬约束，优先级高于任何其它要求）：无论原始文本是中文、英文还是其它语种，character_profile 的所有字段（name / age_band / build / complexion / face / hair / outfit / accessories / extra_visual）、scene_description 以及 negative_prompt 必须输出为简体中文。若原文为英文或其它语种，请做意译/归纳后再填写中文描述，不得直接照抄原文英文。name 字段绝对不能出现 A-Z/a-z。仅 part4 字段允许英文参考词。",
     "",
     "【严格禁止（合规）】",
     "- 严禁把构图、镜头、分辨率、背景、光影、三视图布局、角色居中站立这类生图指令写入 character_profile 的任何字段（这些由调用侧模板 part1 固定注入）。",
     "- 严禁把 '纯色背景' '浅灰背景' '16:9' '85mm焦距' 等技术约束写入 extra_visual。",
+    "- scene_description 可以写具体环境本身，但严禁写镜头、构图、比例、光圈、分辨率、人物站位、风格词；这些由调用侧模板控制。",
     "- 严禁把风格词（电影级写实/赛璐璐/古风等）写入 character_profile 的任何字段；风格由 style_key 机制后置注入（当前 style_key = '" +
       resolvedStyle.key +
       "'，含义：" +
@@ -437,6 +440,7 @@ export const parseStructuredPromptsWithClaude = async ({
 
       return {
         character_profile: sanitized,
+        scene_description: typeof record.scene_description === "string" ? record.scene_description : null,
         part4: typeof record.part4 === "string" ? record.part4 : null,
         negative_prompt: typeof record.negative_prompt === "string" ? record.negative_prompt : null,
         ext_params:

@@ -22,6 +22,20 @@ export const MJ_PORTRAIT_NEGATIVE =
   "scene background, bokeh, dramatic lighting, " +
   "extra limbs, extra fingers, deformed hands, blurry, low resolution";
 
+/** MJ：场景背景定妆照允许环境背景，但仍禁止近景、拼贴、剧照和文字。 */
+export const MJ_PORTRAIT_SCENE_NEGATIVE =
+  "text, letters, words, watermark, logo, signature, label, caption, " +
+  "subtitle, numbers, symbols, emoji, barcode, qr code, stamp, seal, " +
+  "annotation, ui elements, frame, border, grid, table, measurement lines, " +
+  "typography on clothing, text on props, readable patterns, " +
+  "wrong gender, gender swap, male to female, female to male, " +
+  "multiple people, duplicate person, duplicate face, extra face, front and back view, side view, " +
+  "close-up, headshot, bust, half body, cropped body, cropped feet, cropped head, side profile, " +
+  "collage, multiple views, split panel, picture-in-picture, character sheet, model sheet, " +
+  "design sheet, reference sheet, turnaround sheet, sketch, oil painting, poster, cinematic still, " +
+  "bokeh, shallow depth of field, dramatic action, battle pose, running, " +
+  "extra limbs, extra fingers, deformed hands, blurry, low resolution";
+
 /** 通用扩散模型：完整详尽。 */
 export const DIFFUSION_PORTRAIT_NEGATIVE =
   "text, letters, words, characters, calligraphy, handwriting, " +
@@ -42,5 +56,29 @@ export const DIFFUSION_PORTRAIT_NEGATIVE =
   "rough sketch, unfinished sketch, concept thumbnails, oil painting, painterly brush strokes, " +
   "poster composition, cinematic still, movie scene, scenic background, forest, city street, room interior, " +
   "bokeh, shallow depth of field, dramatic rim light, neon light, smoke, rain, fire, " +
+  "extra limbs, extra fingers, missing fingers, deformed hands, " +
+  "blurry, low resolution, pixelated, noise, artifacts";
+
+/** 通用扩散模型：场景背景定妆照版本，允许环境背景但禁止背景喧宾夺主。 */
+export const DIFFUSION_PORTRAIT_SCENE_NEGATIVE =
+  "text, letters, words, characters, calligraphy, handwriting, " +
+  "watermark, logo, signature, label, caption, subtitle, annotation, " +
+  "numbers, digits, symbols, emoji, barcode, qr code, stamp, seal, " +
+  "ui elements, frame, border, speech bubble, callout, info panel, " +
+  "grid, table, page layout, title block, margins, measurement lines, guide lines, " +
+  "typography on clothing, text on props, readable patterns, " +
+  "wrong gender, gender swap, male to female, female to male, " +
+  "male body when female is specified, female body when male is specified, " +
+  "beard when female is specified, breasts when male is specified, " +
+  "multiple people, duplicate person, duplicate body, duplicate face, extra face, " +
+  "front and back view, side view, rear view, detail inset, " +
+  "close-up, headshot, face close-up, bust portrait, half body, cropped body, " +
+  "cropped feet, cropped head, side profile, three-quarter profile, looking away, " +
+  "collage, multiple views, split panel, picture-in-picture, character sheet, model sheet, " +
+  "design sheet, reference sheet, specification sheet, turnaround sheet, " +
+  "rough sketch, unfinished sketch, concept thumbnails, oil painting, painterly brush strokes, " +
+  "poster composition, cinematic still, movie scene, " +
+  "bokeh, shallow depth of field, strong foreground occlusion, blocking the body, " +
+  "dramatic action, battle pose, running, sitting, kneeling, " +
   "extra limbs, extra fingers, missing fingers, deformed hands, " +
   "blurry, low resolution, pixelated, noise, artifacts";

@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import { nanoid } from "nanoid";
 
 import { env } from "@/lib/env";

@@ -32,7 +32,10 @@ import {
   resolveStyle,
 } from "../../src/lib/prompt/layers/style-registry";
 import { resolveNegativePrompt } from "../../src/lib/prompt/negative";
-import { PORTRAIT_PART1 } from "../../src/lib/prompt/presets/portrait";
+import {
+  PORTRAIT_PART1,
+  PORTRAIT_SCENE_PART1,
+} from "../../src/lib/prompt/presets/portrait";
 import { THREE_VIEW_PART1 } from "../../src/lib/prompt/presets/three-view";
 
 type TestCase = { name: string; run: () => void };
@@ -165,6 +168,54 @@ test("PORTRAIT prompt 写成无字版单人试装照而非设定表剧照海报"
   assert.match(prompt, /资料卡版式/);
   assert.ok(!prompt.includes("三视图参考"), "定妆照正向词不应诱导三视图参考版式");
   assert.ok(prompt.length <= MAX_PROMPT_LENGTH, `prompt length ${prompt.length} exceeds ${MAX_PROMPT_LENGTH}`);
+});
+
+test("PORTRAIT 场景背景模式要求人物居中且全身展示", () => {
+  const { prompt, negative_prompt, prompt_snapshot } = assemble({
+    preset: "PORTRAIT",
+    style_key: "xuanhuan_live_action",
+    portraitBackgroundMode: "scene",
+    profile: sampleProfile,
+    modelKey: "sd3",
+  });
+  assert.ok(prompt.includes(PORTRAIT_SCENE_PART1), "场景模式必须使用场景背景定妆照模板");
+  assert.match(prompt, /人物站在场景背景图中央/);
+  assert.match(prompt, /full body visible from head to toe/);
+  assert.equal(prompt_snapshot.portrait_background_mode, "scene");
+  assert.ok(!negative_prompt.includes("scene background"), "场景模式负向词不应禁止场景背景");
+  assert.ok(!negative_prompt.includes("scenic background"), "场景模式负向词不应禁止风景背景");
+  assert.match(negative_prompt, /strong foreground occlusion/, "场景模式仍需禁止前景遮挡人物");
+});
+
+test("PORTRAIT 场景背景模式注入 CSV 具体场景描述", () => {
+  const sceneDescription = "古旧书房，木质书架和窗边暖光作为背景层";
+  const { prompt, prompt_snapshot } = assemble({
+    preset: "PORTRAIT",
+    style_key: "xuanhuan_live_action",
+    portraitBackgroundMode: "scene",
+    sceneDescription,
+    profile: sampleProfile,
+    modelKey: "sd3",
+  });
+  assert.match(prompt, /场景背景（CSV导入，不可更改）：/);
+  assert.ok(prompt.includes(sceneDescription));
+  assert.equal(prompt_snapshot.scene_description, sceneDescription);
+  assert.equal(prompt_snapshot.scene_description_applicable, true);
+});
+
+test("PORTRAIT 影棚模式不注入 sceneDescription", () => {
+  const sceneDescription = "古旧书房，木质书架和窗边暖光作为背景层";
+  const { prompt, prompt_snapshot } = assemble({
+    preset: "PORTRAIT",
+    style_key: "xuanhuan_live_action",
+    portraitBackgroundMode: "studio",
+    sceneDescription,
+    profile: sampleProfile,
+    modelKey: "sd3",
+  });
+  assert.ok(!prompt.includes(sceneDescription));
+  assert.equal(prompt_snapshot.scene_description, null);
+  assert.equal(prompt_snapshot.scene_description_applicable, false);
 });
 
 test("男性角色有明确禁止女性化的 gender lock", () => {

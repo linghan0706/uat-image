@@ -55,6 +55,11 @@ export function PromptPreview({ prompts, onUpdatePrompt, onRemovePrompt }: Promp
                 参考: {item.prompt_blocks.part4.slice(0, 100)}
               </div>
             )}
+            {item.scene_description && (
+              <div className="mt-1.5 rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-1.5 text-[11px] text-cyan-100">
+                场景: {item.scene_description.slice(0, 120)}
+              </div>
+            )}
             <div className="mt-1.5 flex justify-end">
               <button
                 type="button"

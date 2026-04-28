@@ -2,7 +2,7 @@
  * PromptEngine —— 定妆照/三视图最终生图 prompt 的组装器。
  *
  * 职责边界：
- *   输入：{ preset, style_key, profile, part4?, extra_user_text? }
+ *   输入：{ preset, style_key, portraitBackgroundMode?, sceneDescription?, profile, part4?, extra_user_text? }
  *   输出：{ prompt, negative_prompt, prompt_snapshot }
  *
  * 不感知：Sky 网关 body 结构、模型 provider、数据库、HTTP。
@@ -10,14 +10,18 @@
  *
  * 最终 prompt 结构（关键：首尾夹击「无文字」）：
  *   L0 [NO_TEXT_LEAD]
- *   L1 [part1 模板指令]
+ *   L1 [part1 模板指令（影棚定妆照 / 场景背景定妆照 / 三视图）]
+ *   L1.5 [CSV 导入的具体场景背景（仅 PORTRAIT 场景背景模式）]
  *   L2 风格：[style_preset.part2_content]（仅 PORTRAIT）
  *   L3 [渲染后的 CharacterProfile]（仅 PORTRAIT）
  *   L4 参考风格：[part4 或 style_preset.part4_reference]（仅 PORTRAIT）
  *   L0 [NO_TEXT_TAIL]
  */
 
-import type { FunctionalCapability } from "@/lib/api/image-workflow.types";
+import type {
+  FunctionalCapability,
+  PortraitBackgroundMode,
+} from "@/lib/api/image-workflow.types";
 import {
   type CharacterProfile,
   isExplicitGender,
@@ -39,6 +43,10 @@ import {
   PORTRAIT_NO_TEXT_LEAD,
   PORTRAIT_NO_TEXT_TAIL,
   PORTRAIT_PART1,
+  PORTRAIT_SCENE_NO_TEXT_LEAD,
+  PORTRAIT_SCENE_NO_TEXT_TAIL,
+  PORTRAIT_SCENE_PART1,
+  normalizePortraitBackgroundMode,
 } from "@/lib/prompt/presets/portrait";
 import {
   THREE_VIEW_NO_TEXT_LEAD,
@@ -49,9 +57,11 @@ import {
 export type AssembleInput = {
   preset: FunctionalCapability;
   style_key?: string | null;
+  portraitBackgroundMode?: PortraitBackgroundMode;
   profile: CharacterProfile | null;
   modelKey: string;
   part4?: string | null;
+  sceneDescription?: string | null;
   extra_user_text?: string | null;
   userNegative?: string | null;
 };
@@ -74,6 +84,7 @@ export type PromptLayerSnapshot = {
 export type PromptSnapshot = {
   schema_version: 2;
   preset: FunctionalCapability;
+  portrait_background_mode: PortraitBackgroundMode;
   style_key: string;
   style_key_is_fallback: boolean;
   part1: string;
@@ -84,6 +95,8 @@ export type PromptSnapshot = {
   profile_applicable: boolean;
   part4: string;
   part4_applicable: boolean;
+  scene_description: string | null;
+  scene_description_applicable: boolean;
   no_text_lead: string;
   no_text_tail: string;
   layers: PromptLayerSnapshot[];
@@ -97,12 +110,20 @@ export type AssembleOutput = {
 
 const resolvePreset = (
   preset: FunctionalCapability,
+  portraitBackgroundMode: PortraitBackgroundMode,
 ): { part1: string; lead: string; tail: string } => {
   if (preset === "THREE_VIEW") {
     return {
       part1: THREE_VIEW_PART1,
       lead: THREE_VIEW_NO_TEXT_LEAD,
       tail: THREE_VIEW_NO_TEXT_TAIL,
+    };
+  }
+  if (portraitBackgroundMode === "scene") {
+    return {
+      part1: PORTRAIT_SCENE_PART1,
+      lead: PORTRAIT_SCENE_NO_TEXT_LEAD,
+      tail: PORTRAIT_SCENE_NO_TEXT_TAIL,
     };
   }
   return {
@@ -120,6 +141,12 @@ const resolvePart4 = (style: StylePreset, userPart4?: string | null): string => 
 
 const buildStyleLine = (style: StylePreset): string => `风格：${style.part2_content.trim()}`;
 const buildPart4Line = (part4: string): string => `参考风格：\n${part4}`;
+const buildSceneDescriptionLine = (sceneDescription: string): string =>
+  [
+    "场景背景（CSV导入，不可更改）：",
+    sceneDescription,
+    "要求：该场景只作为背景环境服务于角色身份与世界观；不得加入第二个人物，不得遮挡角色全身轮廓，不得改变角色正面静态定妆照构图。",
+  ].join("\n");
 
 const buildGenderPriorityLock = (profile: CharacterProfile): string => {
   if (profile.gender === "male") {
@@ -170,6 +197,9 @@ const appendPortraitGenderNegative = (
 
 export const assemble = (input: AssembleInput): AssembleOutput => {
   const isThreeView = input.preset === "THREE_VIEW";
+  const portraitBackgroundMode = isThreeView
+    ? "studio"
+    : normalizePortraitBackgroundMode(input.portraitBackgroundMode);
 
   // THREE_VIEW 的视觉一致性由定妆照参考图（i2i）保证，不再依赖 CharacterProfile。
   // PORTRAIT/SCENE_CONCEPT 仍要求完整的结构化 profile。
@@ -183,7 +213,7 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
     );
   }
 
-  const { part1, lead, tail } = resolvePreset(input.preset);
+  const { part1, lead, tail } = resolvePreset(input.preset, portraitBackgroundMode);
 
   const normalizedStyleKey = (input.style_key ?? "").trim().toLowerCase();
   const resolvedStyle = resolveStyle(normalizedStyleKey);
@@ -193,12 +223,25 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
   const profileApplicable = !isThreeView && isValidCharacterProfile(input.profile) && isExplicitGender(input.profile.gender);
   const profileRendered = profileApplicable ? renderCharacterProfile(input.profile!) : "";
   const part4 = isThreeView ? "" : resolvePart4(resolvedStyle, input.part4);
+  const sceneDescription =
+    !isThreeView && portraitBackgroundMode === "scene"
+      ? input.sceneDescription?.trim() || null
+      : null;
 
   const genderPriorityLock = profileApplicable ? buildGenderPriorityLock(input.profile!) : "";
 
   const sections = isThreeView
     ? [lead, part1, tail]
-    : [lead, genderPriorityLock, part1, buildStyleLine(resolvedStyle), profileRendered, buildPart4Line(part4), tail];
+    : [
+        lead,
+        genderPriorityLock,
+        part1,
+        sceneDescription ? buildSceneDescriptionLine(sceneDescription) : "",
+        buildStyleLine(resolvedStyle),
+        profileRendered,
+        buildPart4Line(part4),
+        tail,
+      ];
 
   const prompt = sections
     .map((s) => s.trim())
@@ -209,6 +252,7 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
     preset: input.preset,
     modelKey: input.modelKey,
     userNegative: input.userNegative,
+    portraitBackgroundMode,
   }), !isThreeView && profileApplicable ? input.profile : null);
   const layers: PromptLayerSnapshot[] = [
     {
@@ -221,7 +265,11 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
     {
       id: "L1_CAPABILITY_LAYOUT",
       priority: 1,
-      label: isThreeView ? "三视图固定模板" : "定妆照固定模板",
+      label: isThreeView
+        ? "三视图固定模板"
+        : portraitBackgroundMode === "scene"
+          ? "定妆照场景背景模板"
+          : "定妆照固定模板",
       applicable: true,
       included: Boolean(part1),
     },
@@ -251,6 +299,7 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
   const prompt_snapshot: PromptSnapshot = {
     schema_version: 2,
     preset: input.preset,
+    portrait_background_mode: portraitBackgroundMode,
     style_key: resolvedStyle.key,
     style_key_is_fallback: styleKeyIsFallback,
     part1,
@@ -261,6 +310,8 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
     profile_applicable: profileApplicable,
     part4,
     part4_applicable: !isThreeView,
+    scene_description: sceneDescription,
+    scene_description_applicable: !isThreeView && portraitBackgroundMode === "scene",
     no_text_lead: lead,
     no_text_tail: tail,
     layers,

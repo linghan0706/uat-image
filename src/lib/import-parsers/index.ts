@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import {
   MAX_DOCX_XLSX_FILE_SIZE,
   MAX_PROMPTS_PER_BATCH,
+  MAX_SCENE_DESCRIPTION_LENGTH,
   MAX_TXT_LIKE_FILE_SIZE,
 } from "@/lib/constants";
 import { AppError } from "@/lib/errors";
@@ -14,7 +15,6 @@ import {
   sanitizeCharacterProfile,
   type CharacterProfile,
 } from "@/lib/prompt/character-profile";
-import { parseStructuredPromptsWithClaude } from "@/services/structured-parse.service";
 
 export type ParsedPrompt = {
   line_no: number;
@@ -25,6 +25,7 @@ export type ParsedPrompt = {
   prompt_blocks?: { part4?: string | null };
   character_profile?: CharacterProfile | null;
   style_key?: string | null;
+  scene_description?: string | null;
 };
 
 export type ParseResult = {
@@ -58,6 +59,7 @@ type ParsedRowFields = {
   ext_params_json?: string;
   reference_prompt?: string;
   part4?: string;
+  scene_description?: string;
 };
 
 const normalizeMultiline = (value?: string | null) =>
@@ -77,7 +79,10 @@ const pushPromptWithDedupe = (
   dedupe: boolean,
   prompt: ParsedPrompt,
 ) => {
-  const dedupeKey = prompt.character_profile?.name ?? prompt.prompt;
+  const dedupeKey = [
+    prompt.character_profile?.name ?? prompt.prompt,
+    prompt.scene_description?.trim() ?? "",
+  ].join("\u001f");
   if (dedupe && existed.has(dedupeKey)) {
     return;
   }
@@ -109,6 +114,7 @@ const finalizePromptItems = (
 const buildPromptItemsFromCandidates = (
   candidates: Array<{
     character_profile: CharacterProfile;
+    scene_description?: string | null;
     part4?: string | null;
     negative_prompt?: string | null;
     ext_params?: Record<string, unknown>;
@@ -151,6 +157,7 @@ const buildPromptItemsFromCandidates = (
       prompt_blocks: candidate.part4 ? { part4: candidate.part4 } : undefined,
       character_profile: profile,
       style_key: options?.styleKey ?? null,
+      scene_description: normalizeMultiline(candidate.scene_description)?.slice(0, MAX_SCENE_DESCRIPTION_LENGTH) ?? null,
     });
   });
 
@@ -209,6 +216,15 @@ const resolveColumnAlias = (key: string): keyof ParsedRowFields | null => {
     "参考提示词": "reference_prompt",
     "参考风格": "reference_prompt",
     part4: "part4",
+    scene_description: "scene_description",
+    scenedescription: "scene_description",
+    scene: "scene_description",
+    background_description: "scene_description",
+    backgrounddescription: "scene_description",
+    "场景描述": "scene_description",
+    "背景描述": "scene_description",
+    "环境描述": "scene_description",
+    "定妆场景": "scene_description",
   };
 
   return aliasMap[trimmed] ?? aliasMap[lowered] ?? aliasMap[condensed] ?? null;
@@ -287,6 +303,15 @@ const parseRecordRows = (
 
     const part4 =
       normalizeMultiline(normalizedRow.part4) ?? normalizeMultiline(normalizedRow.reference_prompt);
+    const sceneDescription = normalizeMultiline(normalizedRow.scene_description);
+    if (sceneDescription && sceneDescription.length > MAX_SCENE_DESCRIPTION_LENGTH) {
+      errors.push({
+        line_no: lineNo,
+        reason: "scene_description_too_long",
+        raw: normalizedRow.scene_description ?? "",
+      });
+      return;
+    }
 
     pushPromptWithDedupe(prompts, existed, dedupe, {
       line_no: lineNo,
@@ -297,6 +322,7 @@ const parseRecordRows = (
       prompt_blocks: part4 ? { part4 } : undefined,
       character_profile: profile,
       style_key: options?.styleKey ?? null,
+      scene_description: sceneDescription ?? null,
     });
   });
 
@@ -328,14 +354,13 @@ const parseXlsx = (buffer: Buffer, dedupe: boolean, options?: ParseOptions): Par
   return parseRecordRows(rows, "xlsx", dedupe, options);
 };
 
-const shouldUseClaude = (options?: ParseOptions) => options?.parseMode !== "local";
-
 const parseViaClaude = async (
   sourceText: string,
   sourceType: ParseResult["source_type"],
   dedupe: boolean,
   options?: ParseOptions,
 ): Promise<ParseResult> => {
+  const { parseStructuredPromptsWithClaude } = await import("@/services/structured-parse.service");
   const candidates = await parseStructuredPromptsWithClaude({
     sourceText,
     capability: options?.capability ?? "PORTRAIT",
@@ -350,68 +375,6 @@ const parseViaClaude = async (
   );
 };
 
-/**
- * 从一行原始文本中派生中文标签式角色名（兜底命名）。
- *
- * 规则：
- * 1. 优先取冒号/破折号前的短片段（常见格式 "林婉：红衣少女"）
- * 2. 只保留中文/字母/数字，去掉所有标点与空格
- * 3. 截取前 8 个字符；若候选为空或剩余长度不足 2，则返回空串由上游判为不可命名
- *
- * 返回空串意味着该行无法派生合理名字，上游应剔除该行而不是用 "角色N" 兜底。
- */
-const deriveFallbackName = (line: string): string => {
-  const head = line.split(/[:：\-—–]/)[0]?.trim() ?? "";
-  const candidate = head || line.trim();
-  const cleaned = candidate.replace(/[^\p{Script=Han}A-Za-z0-9]/gu, "");
-  if (cleaned.length < 2) return "";
-  return cleaned.slice(0, 8);
-};
-
-const parseFreeTextLocalFallback = (
-  rawText: string,
-  sourceType: ParseResult["source_type"],
-  dedupe: boolean,
-  options?: ParseOptions,
-): ParseResult => {
-  const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const prompts: ParsedPrompt[] = [];
-  const errors: ParseResult["errors"] = [];
-  const existed = new Set<string>();
-  lines.forEach((line, idx) => {
-    const name = deriveFallbackName(line);
-    if (!name) {
-      errors.push({ line_no: idx + 1, reason: "unnameable_line", raw: line });
-      return;
-    }
-    const profile = sanitizeCharacterProfile({
-      name,
-      gender: normalizeGender(line),
-      extra_visual: line,
-    });
-    // sanitizeCharacterProfile 内部会调用 isPlaceholderName；
-    // 若候选名命中占位符模式（如 "角色1"、"NPC1"），profile 为 null，直接剔除该行。
-    if (!profile) {
-      errors.push({ line_no: idx + 1, reason: "placeholder_name_rejected", raw: line });
-      return;
-    }
-    if (!isExplicitGender(profile.gender)) {
-      errors.push({ line_no: idx + 1, reason: "missing_explicit_gender", raw: line });
-      return;
-    }
-    pushPromptWithDedupe(prompts, existed, dedupe, {
-      line_no: idx + 1,
-      prompt: "",
-      character_name: profile.name,
-      ext_params: {},
-      character_profile: profile,
-      style_key: options?.styleKey ?? null,
-    });
-  });
-
-  return finalizePromptItems(prompts, sourceType, lines.length, errors);
-};
-
 const assertFileSize = (size: number, sourceType: ParseResult["source_type"]) => {
   if (["docx", "xlsx"].includes(sourceType) && size > MAX_DOCX_XLSX_FILE_SIZE) {
     throw new AppError("E_INVALID_PARAM", "File size exceeds 10MB.", 400);
@@ -422,10 +385,7 @@ const assertFileSize = (size: number, sourceType: ParseResult["source_type"]) =>
 };
 
 export const parsePromptText = async (text: string, dedupe = false, options?: ParseOptions): Promise<ParseResult> => {
-  if (shouldUseClaude(options)) {
-    return parseViaClaude(text, "text", dedupe, options);
-  }
-  return parseFreeTextLocalFallback(text, "text", dedupe, options);
+  return parseViaClaude(text, "text", dedupe, options);
 };
 
 export const parsePromptFile = async (file: File, dedupe = false, options?: ParseOptions): Promise<ParseResult> => {
@@ -448,16 +408,10 @@ export const parsePromptFile = async (file: File, dedupe = false, options?: Pars
       return parseXlsx(buffer, dedupe, options);
     case "md":
     case "txt":
-      if (shouldUseClaude(options)) {
-        return parseViaClaude(text, sourceType, dedupe, options);
-      }
-      return parseFreeTextLocalFallback(text, sourceType, dedupe, options);
+      return parseViaClaude(text, sourceType, dedupe, options);
     case "docx": {
       const result = await mammoth.extractRawText({ buffer });
-      if (shouldUseClaude(options)) {
-        return parseViaClaude(result.value, "docx", dedupe, options);
-      }
-      return parseFreeTextLocalFallback(result.value, "docx", dedupe, options);
+      return parseViaClaude(result.value, "docx", dedupe, options);
     }
     default:
       throw new AppError("E_UNSUPPORTED_FILE_TYPE", `Unsupported file type: ${ext}.`, 400);

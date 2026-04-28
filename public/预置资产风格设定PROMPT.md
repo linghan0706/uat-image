@@ -1,47 +1,20 @@
-import {
-  assertNoPromptIsolationViolations,
-  findPromptIsolationViolations,
-  type PromptIsolationViolation,
-} from "@/lib/prompt/isolation";
+# 预置资产风格设定 Prompt
 
-/**
- * Layer 2 —— 风格预设选择器（system_prompt 注入）
- *
- * 前端仅下拉选择 style_key；后端查表注入具体风格文案到生图 prompt 的 part2 段。
- * 遵循「模板不嵌入风格」约定：所有 preset part1 默认 part2 为空，
- * 风格由本注册表按 style_key 动态填入。
- *
- * 新增风格：追加 STYLE_PRESETS 条目即可，无需改业务代码。
- *
- * 重要：定妆照的构图/姿态/镜头/背景由 portrait preset 的 part1 硬约束统一控制
- * （影棚定妆照 / 场景背景定妆照由 portraitBackgroundMode 切换）。
- * 本层 part2_content 仅描述「美术基调、色彩、材质、人物造型方向」，
- * 不得包含任何场景剧照示例、镜头语言（焦段/光圈/景深）、多视图排版
- * 等会覆盖 part1 构图约束的文案，否则会导致定妆照产出剧照/拼贴。
- */
+本文件对齐当前前端风格选择器，来源为 `src/lib/prompt/layers/style-registry.ts`。
 
-export type StyleCategory = "realistic" | "anime" | "cdrama" | "concept";
+当前风格选择器只选择 `style_key`，后端会把对应的 `part2_content` 注入最终生图 prompt 的风格层。定妆照的构图、站姿、镜头和背景不写在风格层里，由 PORTRAIT 模板统一控制。
 
-export type StylePreset = {
-  key: string;
-  label: string;
-  category: StyleCategory;
-  /** 真正注入生图 prompt 的风格描述（part2 内容）。 */
-  part2_content: string;
-  /** 可选：英文参考词，若 part4 未提供则作为兜底。 */
-  part4_reference: string;
-  /** 给 Claude 顶层的补充说明，用于解析阶段让 Claude 知晓当前风格基调。 */
-  art_director_brief: string;
-};
+新增的“定妆照场景背景图”不是新的 `style_key`，而是 PORTRAIT 的 `background_mode=scene` 画面模式；它可以与下列任意风格一起使用。
 
-const promptBlock = (content: string) => content.trim();
+## 当前风格选择器
 
-export const STYLE_PRESETS: StylePreset[] = [
-  {
-    key: "xuanhuan_live_action",
-    label: "玄幻真人风",
-    category: "cdrama",
-    part2_content: promptBlock(`
+### xuanhuan_live_action
+
+- label: 玄幻真人风
+- category: cdrama
+- brief: 玄幻真人风：东方玄幻与仙侠真人影视造型质感，强调宗门秩序、修炼层级与真实服饰材质；避免法相巨影、塑料特效和现代元素。
+
+```text
 【美术基调】东方玄幻真人影视质感，写实仙侠修炼美学，真人比例与照片级材质。
 
 【人物造型方向】
@@ -64,17 +37,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】保留真实皮肤纹理与岁月痕迹，不过度磨皮，不瓷娃娃感。
 
 【避免】法相巨影、背后神像投影、半透明虚影、西方板甲、现代拉链、二次元平涂、动漫感。
-`),
-    part4_reference:
-      "live-action xuanhuan costume design, eastern fantasy cultivation wardrobe, Chinese xianxia realistic fabric and armor, ritual embroidery, real skin texture",
-    art_director_brief:
-      "玄幻真人风：东方玄幻与仙侠真人影视造型质感，强调宗门秩序、修炼层级与真实服饰材质；避免法相巨影、塑料特效和现代元素。",
-  },
-  {
-    key: "digital_monster_adventure",
-    label: "数码宝贝风",
-    category: "anime",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+live-action xuanhuan costume design, eastern fantasy cultivation wardrobe, Chinese xianxia realistic fabric and armor, ritual embroidery, real skin texture
+```
+
+### digital_monster_adventure
+
+- label: 数码宝贝风
+- category: anime
+- brief: 数码宝贝风：少年冒险动画造型，强调伙伴亲和力、高饱和色与清晰剪影；避免成人化和写实暗黑化。
+
+```text
 【美术基调】90 年代冒险动漫美学升级版，干净清晰的动漫线条与厚涂上色，青春冒险感。
 
 【人物造型方向】
@@ -94,17 +71,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】动漫清爽肌肤，轮廓线干净，阴影平整，不追求写实毛孔。
 
 【避免】成人化暗黑造型、写实皮肤毛孔、水彩柔边、中世纪奇幻服饰、成人职业装、暗黑色调。
-`),
-    part4_reference:
-      "digital monster adventure anime costume, youth adventure wardrobe, gender follows character_profile exactly, goggles and hoodie, bright 90s anime style, clean anime silhouette, vivid saturated outfit",
-    art_director_brief:
-      "数码宝贝风：少年冒险动画造型，强调伙伴亲和力、高饱和色与清晰剪影；避免成人化和写实暗黑化。",
-  },
-  {
-    key: "ancient_war_epic",
-    label: "古装战争风",
-    category: "cdrama",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+digital monster adventure anime costume, youth adventure wardrobe, gender follows character_profile exactly, goggles and hoodie, bright 90s anime style, clean anime silhouette, vivid saturated outfit
+```
+
+### ancient_war_epic
+
+- label: 古装战争风
+- category: cdrama
+- brief: 古装战争风：古代权谋战争史诗造型，强调真实甲胄磨损、战场消耗与身份阶层；避免魔幻装饰和影楼崭新感。
+
+```text
 【美术基调】极致写实古代战争史诗造型，真人比例，影视剧组历史剧质感。
 
 【人物造型方向】
@@ -128,17 +109,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】皮肤带汗水、尘土与细小划痕，真实毛孔与岁月痕迹。
 
 【避免】西方板甲、哥特尖盔、十字架、魔幻发光宝石、夸张巨剑、超比例翅膀、影楼式干净妆发、荧光色。
-`),
-    part4_reference:
-      "ancient Chinese war costume, historical battlefield wardrobe, worn lamellar armor, dusty banners and cloaks, realistic period fabric, weathered skin",
-    art_director_brief:
-      "古装战争风：古代权谋战争史诗造型，强调真实甲胄磨损、战场消耗与身份阶层；避免魔幻装饰和影楼崭新感。",
-  },
-  {
-    key: "steam_cyberpunk",
-    label: "蒸汽赛博",
-    category: "concept",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+ancient Chinese war costume, historical battlefield wardrobe, worn lamellar armor, dusty banners and cloaks, realistic period fabric, weathered skin
+```
+
+### steam_cyberpunk
+
+- label: 蒸汽赛博
+- category: concept
+- brief: 蒸汽赛博：蒸汽机械与赛博电子融合造型，强调黄铜义体、维多利亚剪裁与电影级材质；避免单纯复古或单纯霓虹堆砌。
+
+```text
 【美术基调】蒸汽机械 × 赛博电子融合，维多利亚剪裁与高科技改造叠加，黑色电影质感的真实材质。
 
 【人物造型方向】
@@ -158,17 +143,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】皮肤真实，可见毛孔；义体接缝处有金属氧化、焊点、磨损。
 
 【避免】纯电子光源堆砌、纯复古机械、元素堆砌、色彩明亮圆润的未来感（如守望先锋风）、木质法杖、布质披风式纯奇幻。
-`),
-    part4_reference:
-      "steam cyberpunk character design, brass prosthetics, Victorian cybernetic wardrobe, steam pipes and pressure gauges, noir material texture",
-    art_director_brief:
-      "蒸汽赛博：蒸汽机械与赛博电子融合造型，强调黄铜义体、维多利亚剪裁与电影级材质；避免单纯复古或单纯霓虹堆砌。",
-  },
-  {
-    key: "wasteland_cyberpunk",
-    label: "废土赛博",
-    category: "concept",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+steam cyberpunk character design, brass prosthetics, Victorian cybernetic wardrobe, steam pipes and pressure gauges, noir material texture
+```
+
+### wasteland_cyberpunk
+
+- label: 废土赛博
+- category: concept
+- brief: 废土赛博：末世生存与赛博义体融合造型，强调磨损拼装、粗粝材质与资源稀缺感；避免干净时装化与高科技圆润感。
+
+```text
 【美术基调】末世资源稀缺的废土赛博生存美学，真实磨损材质，gritty realism。
 
 【人物造型方向】
@@ -188,17 +177,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】皮肤干裂、灰尘附着、伤疤可见；义体接口有油污与氧化。
 
 【避免】崭新装备、完美无瑕皮肤、时装化剪裁、守望先锋式圆润科技感、纯奇幻法杖披风、马卡龙色。
-`),
-    part4_reference:
-      "wasteland cyberpunk survival wardrobe, scavenged cybernetics, rusty patched armor, dusty weathered fabric, gritty post-apocalyptic material",
-    art_director_brief:
-      "废土赛博：末世生存与赛博义体融合造型，强调磨损拼装、粗粝材质与资源稀缺感；避免干净时装化与高科技圆润感。",
-  },
-  {
-    key: "chinese_urban_romance",
-    label: "国内都市爱情",
-    category: "realistic",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+wasteland cyberpunk survival wardrobe, scavenged cybernetics, rusty patched armor, dusty weathered fabric, gritty post-apocalyptic material
+```
+
+### chinese_urban_romance
+
+- label: 国内都市爱情
+- category: realistic
+- brief: 国内都市爱情：中国现代都市现实情感造型，强调真实通勤穿搭与低饱和电影质感；避免悬浮霸总和廉价影楼感。
+
+```text
 【美术基调】当代中国都市写实影视质感，低饱和电影生活感，真人皮肤纹理。
 
 【人物造型方向】
@@ -220,17 +213,21 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】皮肤保留真实毛孔、微纹与光泽，绝不磨皮成瓷感。
 
 【避免】悬浮霸总式浮夸西装、豪宅滤镜、廉价影楼摆拍、塑料瓷娃娃皮肤、强行高饱和、奇幻元素。
-`),
-    part4_reference:
-      "contemporary Chinese urban romance wardrobe, realistic city lifestyle outfit, muted palette, natural skin texture, restrained cinematic fabric",
-    art_director_brief:
-      "国内都市爱情：中国现代都市现实情感造型，强调真实通勤穿搭与低饱和电影质感；避免悬浮霸总和廉价影楼感。",
-  },
-  {
-    key: "western_urban_romance",
-    label: "国外都市爱情",
-    category: "realistic",
-    part2_content: promptBlock(`
+```
+
+part4_reference:
+
+```text
+contemporary Chinese urban romance wardrobe, realistic city lifestyle outfit, muted palette, natural skin texture, restrained cinematic fabric
+```
+
+### western_urban_romance
+
+- label: 国外都市爱情
+- category: realistic
+- brief: 国外都市爱情：欧美都市爱情电影造型，强调独立个体、自然轻熟穿搭与胶片级皮肤质感；避免文化混淆和旅游宣传片感。
+
+```text
 【美术基调】欧美都市爱情电影质感（类《爱乐之城》《午夜巴黎》），松弛自然的轻熟造型，胶片级皮肤纹理。
 
 【人物造型方向】
@@ -251,51 +248,46 @@ export const STYLE_PRESETS: StylePreset[] = [
 【皮肤与质感】真实毛孔、胡渣、眼周纹理，胶片颗粒感，不瓷感。
 
 【避免】东亚古典元素混入、廉价影楼摆拍、过度液化磨皮、高饱和俗艳滤镜、奇幻超现实特效、丑陋现代小物（排插等）入镜。
-`),
-    part4_reference:
-      "western urban romance wardrobe, New York Paris London lifestyle outfit, natural tailored fashion, realistic film skin texture, low saturation palette",
-    art_director_brief:
-      "国外都市爱情：欧美都市爱情电影造型，强调独立个体、自然轻熟穿搭与胶片级皮肤质感；避免文化混淆和旅游宣传片感。",
-  },
-];
+```
 
-/** 默认风格：用户未选时使用。 */
-export const DEFAULT_STYLE_KEY = "xuanhuan_live_action";
+part4_reference:
 
-export const findStylePresetIsolationViolations = (): PromptIsolationViolation[] =>
-  STYLE_PRESETS.flatMap((preset) => [
-    ...findPromptIsolationViolations({
-      domain: "style",
-      field: `${preset.key}.part2_content`,
-      text: preset.part2_content,
-    }),
-    ...findPromptIsolationViolations({
-      domain: "reference",
-      field: `${preset.key}.part4_reference`,
-      text: preset.part4_reference,
-    }),
-  ]);
+```text
+western urban romance wardrobe, New York Paris London lifestyle outfit, natural tailored fashion, realistic film skin texture, low saturation palette
+```
 
-export const assertStylePresetIsolation = () => {
-  assertNoPromptIsolationViolations(
-    findStylePresetIsolationViolations(),
-    "StyleRegistry",
-  );
-};
+## 定妆照场景背景图
 
-/**
- * 按 key 解析风格预设。未知 key 返回默认预设（xuanhuan_live_action），不抛错。
- * 调用方可通过比较返回值的 key 判断是否 fallback。
- */
-export const resolveStyle = (key?: string | null): StylePreset => {
-  assertStylePresetIsolation();
-  const normalized = (key ?? "").trim().toLowerCase();
-  const hit = STYLE_PRESETS.find((preset) => preset.key === normalized);
-  if (hit) return hit;
-  return STYLE_PRESETS.find((preset) => preset.key === DEFAULT_STYLE_KEY) ?? STYLE_PRESETS[0]!;
-};
+### 使用方式
 
-export const listStylePresets = (): ReadonlyArray<StylePreset> => {
-  assertStylePresetIsolation();
-  return STYLE_PRESETS;
-};
+- capability: PORTRAIT
+- background_mode: scene
+- style_key: 从上方当前风格选择器中任选一个
+
+### 场景背景定妆照 Prompt 核心
+
+```text
+影视角色场景背景定妆照 / full-body solo character costume photo in a story-world environment。
+单人，全身，正面 0 度站立，中性表情，人物站在场景背景图中央。
+
+画面目标：单个演员/角色站在其世界观代表性场景中，场景只作为身份与世界观背景，不得抢走人物主体。人物必须完整站在画面中央，头顶到鞋底完整可见。
+
+硬约束：
+1. 仅一个完整站立人物，禁止第二个人、重复人物、第二张脸、侧面图、背面图、局部细节图、拼贴或多视图。
+2. 全身入镜，从头顶、发冠、帽饰到鞋底完整可见，头顶上方与脚底下方各留约 5% 空白。
+3. 人物站在场景背景图水平中央与视觉中心，肩线正对镜头，脸部正对镜头，双眼平视。
+4. 中性表情与静态站姿，双手自然垂于身体两侧，露出服装轮廓、袖口、腰带、鞋靴与随身配饰。
+5. 场景背景与当前 style_key、角色身份、时代和世界观一致，可包含建筑、自然环境、室内空间、城市街景、遗迹、战场或职业空间等。
+6. 场景只能作为背景层，前景物、烟雾、光束、植物、家具、建筑构件不得遮挡头部、手臂、腰带、衣摆、鞋靴和随身配饰。
+7. 光线以清晰展示角色为主，允许轻微环境光，但不得用强逆光、浓烟、强眩光或大面积阴影吞没人物细节。
+8. 竖构图，推荐 2:3 或 3:4，角色占画面高度 72-86%，场景保留信息量但人物仍是第一视觉主体。
+
+English anchor:
+one single human subject only, full body visible from head to toe, centered in an environment background, straight-on front view, neutral standing pose, clear full costume visibility, no crop, no close-up, no collage, no character sheet, no text.
+```
+
+### 场景模式负向词重点
+
+```text
+text, watermark, logo, multiple people, duplicate person, duplicate face, close-up, headshot, bust, half body, cropped body, cropped feet, cropped head, side view, rear view, collage, multiple views, split panel, character sheet, model sheet, poster composition, cinematic still, movie scene, bokeh, shallow depth of field, strong foreground occlusion, blocking the body, dramatic action, battle pose, running, sitting, kneeling, blurry, low resolution
+```

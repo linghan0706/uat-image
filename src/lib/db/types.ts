@@ -81,6 +81,7 @@ export type JobItemRecord = {
   characterName: string | null;
   characterProfile: JsonValue | null;
   styleKey: string | null;
+  sceneDescription: string | null;
 };
 
 export type ImageResultRecord = {

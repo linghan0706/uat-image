@@ -70,11 +70,14 @@ export function CreateTaskForm() {
   // 走 source_portrait_ids 的三视图链路无需依赖 parseResult，豁免此规则。
   const parseErrorsCount = task.importTask.parseResult?.errors.length ?? 0;
   const blockedByParseErrors = !createFromPortraitSources && parseErrorsCount > 0;
-  const canSubmitCreate = (task.canSubmitCreate || createFromPortraitSources) && !blockedByParseErrors;
+  const blockedByMissingScene = !createFromPortraitSources && task.missingSceneDescriptionCount > 0;
+  const canSubmitCreate = (task.canSubmitCreate || createFromPortraitSources) && !blockedByParseErrors && !blockedByMissingScene;
   const submitLabel = task.submitLoading
     ? "提交中..."
     : blockedByParseErrors
       ? `请先修复 ${parseErrorsCount} 行解析错误`
+      : blockedByMissingScene
+        ? `请补全 ${task.missingSceneDescriptionCount} 条场景描述`
       : createFromPortraitSources
         ? `创建三视图（${activeSourcePortraitIds.length} 张定妆照）`
         : task.importTask.prompts.length > 0
@@ -174,6 +177,8 @@ export function CreateTaskForm() {
           <PortraitParams
             count={task.portraitCount}
             setCount={task.setPortraitCount}
+            backgroundMode={task.portraitBackgroundMode}
+            setBackgroundMode={task.setPortraitBackgroundMode}
             negative={task.portraitNegative}
             setNegative={task.setPortraitNegative}
             seed={task.portraitSeed}
@@ -222,6 +227,11 @@ export function CreateTaskForm() {
                   行 {err.line_no}: {err.reason}
                 </div>
               ))}
+            </div>
+          )}
+          {blockedByMissingScene && (
+            <div className="mt-2 rounded-lg border border-amber-400/25 bg-amber-400/10 p-2 text-xs leading-5 text-amber-100">
+              CSV/XLSX 的场景背景模式要求每条定妆照都有场景描述。请补全“场景描述”列后重新解析。
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@ import { query } from "@/lib/db/pg";
 import type { Capability } from "@/lib/db/types";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { getModelProvider } from "@/lib/model-providers";
 import { getStorageAdapter } from "@/lib/storage";
 import { makeImageObjectKey, sha256Hex } from "@/lib/utils";
@@ -13,6 +14,12 @@ import {
 } from "@/services/batch-job.service";
 
 const toCapability = (value: string): Capability => value as Capability;
+
+type PortraitReference = {
+  url: string;
+  nasObjectKey: string;
+  format: string;
+};
 
 const mimeFromFormat = (format: string) => {
   const lower = format.toLowerCase();
@@ -48,19 +55,23 @@ const toAbsoluteUrl = (urlOrPath: string) => {
   return new URL(urlOrPath, env.webBaseUrl).toString();
 };
 
-const getSourcePortraitReferenceUrl = async (sourcePortraitId: bigint) => {
+const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<PortraitReference> => {
   const source = await query<{
     id: bigint;
     capability: Capability;
     isSelectedPortrait: boolean;
     accessUrl: string | null;
+    nasObjectKey: string;
+    format: string;
   }>(
     `
       SELECT
         id,
         capability,
         is_selected_portrait AS "isSelectedPortrait",
-        access_url AS "accessUrl"
+        access_url AS "accessUrl",
+        nas_object_key AS "nasObjectKey",
+        format
       FROM image_results
       WHERE id = $1
       LIMIT 1
@@ -72,8 +83,28 @@ const getSourcePortraitReferenceUrl = async (sourcePortraitId: bigint) => {
     throw new AppError("E_INVALID_PARAM", "Source portrait must be a selected PORTRAIT image_result.", 400);
   }
 
-  return toAbsoluteUrl(source.accessUrl ?? `/api/v1/files/image-results/${source.id.toString()}`);
+  return {
+    url: toAbsoluteUrl(source.accessUrl ?? `/api/v1/files/image-results/${source.id.toString()}`),
+    nasObjectKey: source.nasObjectKey,
+    format: source.format,
+  };
 };
+
+const downloadPortraitAsDataUri = async (ref: PortraitReference): Promise<string> => {
+  const storage = getStorageAdapter();
+  const buffer = await storage.downloadBuffer(ref.nasObjectKey);
+  const mime = mimeFromFormat(ref.format);
+  return `data:${mime};base64,${buffer.toString("base64")}`;
+};
+
+const buildProviderParams = (
+  runParams: Record<string, unknown>,
+  referenceImageValue: string,
+): Record<string, unknown> => ({
+  ...runParams,
+  reference_image_url: referenceImageValue,
+  reference_images: [referenceImageValue],
+});
 
 export const executeJobItem = async (itemId: bigint) => {
   const item = await getJobItemWithBatch(itemId);
@@ -92,38 +123,57 @@ export const executeJobItem = async (itemId: bigint) => {
   const capability = toCapability(item.batchJob.capability);
   const characterName = item.characterName || null;
 
-  if (
-    capability === "THREE_VIEW" &&
-    provider.supportsCapability &&
-    !provider.supportsCapability(item.modelKey, "IMAGE_TO_IMAGE")
-  ) {
-    throw new AppError(
-      "E_INVALID_PARAM",
-      `Model "${item.modelKey}" does not support image-to-image; THREE_VIEW item ${item.id.toString()} cannot execute.`,
-      400,
-    );
-  }
+  let portraitRef: PortraitReference | null = null;
 
-  const referenceImageUrl =
-    capability === "THREE_VIEW" && item.sourcePortraitId
-      ? await getSourcePortraitReferenceUrl(item.sourcePortraitId)
-      : null;
-  const providerParams = referenceImageUrl
-    ? {
-        ...runParams,
-        reference_image_url: referenceImageUrl,
-        reference_images: [referenceImageUrl],
+  const baseInput = {
+    capability,
+    modelKey: item.modelKey,
+    prompt: item.prompt,
+    negativePrompt: item.negativePrompt,
+  };
+
+  const callProviderWithFallback = async () => {
+    if (!portraitRef) {
+      return provider.generateImage({ ...baseInput, params: runParams });
+    }
+    const urlParams = buildProviderParams(runParams, portraitRef.url);
+    try {
+      return await provider.generateImage({ ...baseInput, params: urlParams });
+    } catch (urlError) {
+      // 我们自己到 SKY 的连接超时 —— 换 base64 只会更慢，直接抛
+      if (urlError instanceof AppError && urlError.code === "E_PROVIDER_TIMEOUT") {
+        throw urlError;
       }
-    : runParams;
+      logger.warn(
+        { err: urlError, itemId: itemId.toString(), portraitUrl: portraitRef.url },
+        "Reference image URL unreachable by provider; retrying with base64 data URI",
+      );
+      const dataUri = await downloadPortraitAsDataUri(portraitRef);
+      const fallbackParams = buildProviderParams(runParams, dataUri);
+      return provider.generateImage({ ...baseInput, params: fallbackParams });
+    }
+  };
 
   try {
-    const output = await provider.generateImage({
-      capability,
-      modelKey: item.modelKey,
-      prompt: item.prompt,
-      negativePrompt: item.negativePrompt,
-      params: providerParams,
-    });
+    if (capability === "THREE_VIEW") {
+      if (!item.sourcePortraitId) {
+        throw new AppError(
+          "E_INVALID_PARAM",
+          `THREE_VIEW item ${item.id.toString()} is missing source_portrait_id; it must be generated from a selected portrait.`,
+          400,
+        );
+      }
+      if (provider.supportsCapability && !provider.supportsCapability(item.modelKey, "IMAGE_TO_IMAGE")) {
+        throw new AppError(
+          "E_INVALID_PARAM",
+          `Model "${item.modelKey}" does not support image-to-image; THREE_VIEW item ${item.id.toString()} cannot execute.`,
+          400,
+        );
+      }
+      portraitRef = await getSourcePortraitReference(item.sourcePortraitId);
+    }
+
+    const output = await callProviderWithFallback();
 
     let charSeqOffset = 0;
     if (characterName) {
@@ -200,7 +250,12 @@ export const executeJobItem = async (itemId: bigint) => {
     await updateJobItemOnSuccess(item.id);
   } catch (error) {
     const err = error instanceof Error ? error : new Error("Unknown generate error.");
-    const code = err.message.toLowerCase().includes("timeout") ? "E_PROVIDER_TIMEOUT" : "E_INTERNAL";
+    const code =
+      error instanceof AppError && error.code
+        ? error.code
+        : err.message.toLowerCase().includes("timeout")
+          ? "E_PROVIDER_TIMEOUT"
+          : "E_INTERNAL";
     await updateJobItemOnFailure(item, code, err.message);
     if (code === "E_PROVIDER_TIMEOUT") {
       throw new AppError("E_PROVIDER_TIMEOUT", err.message, 504);

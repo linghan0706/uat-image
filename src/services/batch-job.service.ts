@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import { one, query, withTransaction } from "@/lib/db/pg";
 import type {
+  PortraitBackgroundMode,
+} from "@/lib/api/image-workflow.types";
+import type {
   BatchJobRecord,
   BatchJobStatus,
   Capability,
@@ -24,6 +27,7 @@ import {
 } from "@/lib/prompt/character-profile";
 import { assemble as assemblePromptWithEngine } from "@/lib/prompt/engine";
 import { resolveNegativePrompt } from "@/lib/prompt/negative";
+import { normalizePortraitBackgroundMode } from "@/lib/prompt/presets/portrait";
 import { getModelProvider } from "@/lib/model-providers";
 
 // 最终 prompt 的结构化快照（仅用于 job_items.prompt_blocks JSONB 存档）。
@@ -34,6 +38,7 @@ type PromptBlocksSnapshot = {
   part2: string | null;
   part3: null;
   part4: string | null;
+  scene_description: string | null;
   style_key: string | null;
 };
 import {
@@ -63,6 +68,7 @@ type SourcePortraitForCreate = {
   characterName: string | null;
   characterProfile: JsonValue | null;
   styleKey: string | null;
+  sceneDescription: string | null;
   lineNo: number;
   isSelectedPortrait: boolean;
   capability: Capability;
@@ -100,6 +106,7 @@ const JOB_ITEM_COLUMNS = `
   character_name AS "characterName",
   character_profile AS "characterProfile",
   style_key AS "styleKey",
+  scene_description AS "sceneDescription",
   model_key AS "modelKey",
   status,
   retry_count AS "retryCount",
@@ -155,7 +162,19 @@ const capabilityMap: Record<string, Capability> = {
   SCENE_CONCEPT: "SCENE_CONCEPT",
 };
 
+const resolvePortraitBackgroundModeFromParams = (
+  params: Record<string, unknown>,
+): PortraitBackgroundMode =>
+  normalizePortraitBackgroundMode(
+    typeof params.background_mode === "string"
+      ? params.background_mode
+      : typeof params.portrait_background_mode === "string"
+        ? params.portrait_background_mode
+        : null,
+  );
+
 const portraitParamGuard = (params: Record<string, unknown>, modelKey: string) => {
+  const portraitBackgroundMode = resolvePortraitBackgroundModeFromParams(params);
   const rawCount = params.count;
   const parsedCount = rawCount === undefined || rawCount === null ? undefined : Number(rawCount);
   const count =
@@ -176,6 +195,7 @@ const portraitParamGuard = (params: Record<string, unknown>, modelKey: string) =
       preset: "PORTRAIT",
       modelKey,
       userNegative,
+      portraitBackgroundMode,
     }),
   };
 };
@@ -366,6 +386,7 @@ const resolvePromptItemForCreate = (
   batchStyleKey?: string | null,
   capability?: Capability,
   modelKey?: string,
+  portraitBackgroundMode: PortraitBackgroundMode = "studio",
 ) => {
   if (capability !== "PORTRAIT" && capability !== "THREE_VIEW") {
     throw new AppError(
@@ -400,12 +421,15 @@ const resolvePromptItemForCreate = (
 
   const effectiveStyleKey = item.style_key?.trim() || batchStyleKey?.trim() || null;
   const userNegative = item.negative_prompt?.trim() || undefined;
+  const sceneDescription = item.scene_description?.trim() || null;
   const assembled = assemblePromptWithEngine({
     preset: capability,
     style_key: effectiveStyleKey,
+    portraitBackgroundMode,
     profile,
     modelKey: modelKey ?? "",
     part4: typeof item.prompt_blocks?.part4 === "string" ? item.prompt_blocks.part4 : null,
+    sceneDescription,
     userNegative,
   });
   assertPromptText(assembled.prompt, item.line_no);
@@ -422,10 +446,12 @@ const resolvePromptItemForCreate = (
       part2: assembled.prompt_snapshot.part2,
       part3: null,
       part4: assembled.prompt_snapshot.part4,
+      scene_description: assembled.prompt_snapshot.scene_description,
       style_key: assembled.prompt_snapshot.style_key,
     } satisfies PromptBlocksSnapshot,
     character_profile: profile,
     style_key: assembled.prompt_snapshot.style_key,
+    scene_description: sceneDescription,
   };
 };
 
@@ -445,6 +471,7 @@ const toPromptBlocksResponse = (value: JsonValue | null) => {
       part2: normalizeResponseText(blocks.part2),
       part3: normalizeResponseText(blocks.part3),
       part4: normalizeResponseText(blocks.part4),
+      scene_description: normalizeResponseText(blocks.scene_description),
     },
   };
 };
@@ -481,10 +508,12 @@ const buildThreeViewPromptFromPortrait = (
       part2: assembled.prompt_snapshot.part2,
       part3: null,
       part4: assembled.prompt_snapshot.part4,
+      scene_description: assembled.prompt_snapshot.scene_description,
       style_key: assembled.prompt_snapshot.style_key,
     } satisfies PromptBlocksSnapshot,
     character_profile: profile,
     style_key: assembled.prompt_snapshot.style_key,
+    scene_description: null,
     source_portrait_id: source.id,
   };
 };
@@ -504,6 +533,7 @@ const loadSourcePortraitsForCreate = async (sourcePortraitIds: string[]) => {
         ji.character_name AS "characterName",
         ji.character_profile AS "characterProfile",
         ji.style_key AS "styleKey",
+        ji.scene_description AS "sceneDescription",
         ji.line_no AS "lineNo"
       FROM image_results ir
       JOIN job_items ji ON ji.id = ir.job_item_id
@@ -566,6 +596,8 @@ export const createBatchJob = async (input: CreateBatchInput) => {
   }
 
   const { modelKey, mergedParams } = await resolveModelAndRunParams(capability, input.params);
+  const portraitBackgroundMode =
+    capability === "PORTRAIT" ? resolvePortraitBackgroundModeFromParams(input.params) : "studio";
   const jobNo = makeBatchJobNo();
   const hasSourcePortraits = capability === "THREE_VIEW" && input.source_portrait_ids.length > 0;
   const sourcePortraits = hasSourcePortraits ? await loadSourcePortraitsForCreate(input.source_portrait_ids) : [];
@@ -575,7 +607,7 @@ export const createBatchJob = async (input: CreateBatchInput) => {
         buildThreeViewPromptFromPortrait(portrait, index, modelKey, batchStyleKey),
       )
     : input.prompts.map((prompt) => ({
-        ...resolvePromptItemForCreate(prompt, batchStyleKey, capability, modelKey),
+        ...resolvePromptItemForCreate(prompt, batchStyleKey, capability, modelKey, portraitBackgroundMode),
         source_portrait_id: null,
       }));
   const paramsSnapshotObject: Record<string, unknown> = {
@@ -584,6 +616,9 @@ export const createBatchJob = async (input: CreateBatchInput) => {
     model_key: modelKey,
     params: mergedParams,
   };
+  if (capability === "PORTRAIT") {
+    paramsSnapshotObject.portrait_background_mode = portraitBackgroundMode;
+  }
   if (hasSourcePortraits) {
     paramsSnapshotObject.source_portrait_ids = input.source_portrait_ids;
   }
@@ -626,7 +661,7 @@ export const createBatchJob = async (input: CreateBatchInput) => {
     if (resolvedPrompts.length > 0) {
       const values: unknown[] = [];
       const placeholders = resolvedPrompts.map((prompt, index) => {
-        const offset = index * 14;
+        const offset = index * 15;
         values.push(
           batch.id,
           makeJobItemNo(),
@@ -642,8 +677,9 @@ export const createBatchJob = async (input: CreateBatchInput) => {
           prompt.source_portrait_id ?? null,
           prompt.character_profile ? (prompt.character_profile as unknown as JsonValue) : null,
           prompt.style_key ?? batchStyleKey,
+          prompt.scene_description ?? null,
         );
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, 'PENDING', $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, 'PENDING', $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15})`;
       });
 
       await tx.query(
@@ -663,7 +699,8 @@ export const createBatchJob = async (input: CreateBatchInput) => {
             run_params,
             source_portrait_id,
             character_profile,
-            style_key
+            style_key,
+            scene_description
           )
           VALUES ${placeholders.join(", ")}
         `,
@@ -882,6 +919,7 @@ export const listJobItemsByBatch = async (jobId: string, queryInput: ListItemsIn
           ? (item.characterProfile as Record<string, unknown>)
           : null,
       style_key: item.styleKey,
+      scene_description: item.sceneDescription,
       model_key: item.modelKey,
       status: item.status,
       retry_count: item.retryCount,

@@ -149,6 +149,7 @@ export function JobItemDualPane({ items, jobDetail }: JobItemDualPaneProps) {
         character_name: getDisplayCharacterName(item) ?? item.character_name,
         character_profile: item.character_profile ?? null,
         style_key: item.style_key ?? null,
+        scene_description: item.scene_description ?? item.prompt_blocks?.scene_description ?? null,
         prompt_blocks: item.prompt_blocks ?? undefined,
       }));
   }, [items, selectedItemIds, getEditedPrompt]);
@@ -369,6 +370,7 @@ export function JobItemDualPane({ items, jobDetail }: JobItemDualPaneProps) {
                 <PromptBlock label="P2 风格 / 全局基础" tone="neutral" value={activeItem.prompt_blocks?.part2} />
                 <PromptBlock label="P3 角色独有 / 核心设定" tone="role" value={activeItem.prompt_blocks?.part3} />
                 <PromptBlock label="P4 参考 / 画风约束" tone="neutral" value={activeItem.prompt_blocks?.part4} />
+                <PromptBlock label="场景背景" tone="neutral" value={activeItem.scene_description ?? activeItem.prompt_blocks?.scene_description} />
                 <PromptBlock label="姓名" tone="role" value={activeItem.character_profile?.name} />
                 <PromptBlock label="性别" tone="role" value={formatGender(activeItem.character_profile?.gender)} />
                 <PromptBlock label="年龄段" tone="role" value={activeItem.character_profile?.age_band} />

@@ -2,6 +2,7 @@ import type { FunctionalCapability } from "@/lib/api/image-workflow.types";
 
 export const MAX_PROMPTS_PER_BATCH = 1000;
 export const MAX_PROMPT_LENGTH = 4000;
+export const MAX_SCENE_DESCRIPTION_LENGTH = 800;
 export const MAX_TXT_LIKE_FILE_SIZE = 5 * 1024 * 1024;
 export const MAX_DOCX_XLSX_FILE_SIZE = 10 * 1024 * 1024;
 export const DEFAULT_PAGE_SIZE = 20;

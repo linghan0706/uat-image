@@ -1,8 +1,13 @@
-import type { ModelOption } from "@/lib/api/image-workflow.types";
+import type {
+  ModelOption,
+  PortraitBackgroundMode,
+} from "@/lib/api/image-workflow.types";
 
 interface PortraitParamsProps {
   count: number;
   setCount: (n: number) => void;
+  backgroundMode: PortraitBackgroundMode;
+  setBackgroundMode: (mode: PortraitBackgroundMode) => void;
   negative: string;
   setNegative: (s: string) => void;
   seed: string;
@@ -15,6 +20,8 @@ interface PortraitParamsProps {
 export function PortraitParams({
   count,
   setCount,
+  backgroundMode,
+  setBackgroundMode,
   negative,
   setNegative,
   seed,
@@ -40,6 +47,32 @@ export function PortraitParams({
             ))}
           </select>
         </label>
+        <div className="text-sm">
+          <span className="text-zinc-400">画面</span>
+          <div className="mt-1 grid h-9 grid-cols-2 rounded-lg border border-white/10 bg-zinc-950 p-0.5">
+            {([
+              ["studio", "影棚"],
+              ["scene", "场景"],
+            ] as const).map(([mode, label]) => {
+              const isActive = backgroundMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setBackgroundMode(mode)}
+                  className={`rounded-md px-2 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "bg-cyan-400 text-zinc-950"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label className="text-sm">
           <span className="text-zinc-400">生成张数</span>
           <select
