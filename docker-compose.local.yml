@@ -1,0 +1,22 @@
+services:
+  # ---- Local PostgreSQL (only when explicitly included) ----
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: image
+      POSTGRES_PASSWORD: image
+      POSTGRES_DB: image
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U image"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
