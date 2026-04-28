@@ -5,11 +5,6 @@ services:
     ports:
       - "3000:3000"
     env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://image:image@postgres:5432/image
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
   # ---- Parse Worker (Claude structured parse) ----
@@ -17,11 +12,6 @@ services:
     build: .
     command: ["npx", "tsx", "src/workers/parse-worker.ts"]
     env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://image:image@postgres:5432/image
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
   # ---- Generate Worker (image generation) ----
@@ -29,11 +19,6 @@ services:
     build: .
     command: ["npx", "tsx", "src/workers/generate-worker.ts"]
     env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://image:image@postgres:5432/image
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
   # ---- Export Worker (ZIP export) ----
@@ -41,11 +26,6 @@ services:
     build: .
     command: ["npx", "tsx", "src/workers/export-worker.ts"]
     env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://image:image@postgres:5432/image
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
   # ---- PostgreSQL ----
