@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "幻希塞隆资产生成",
+  title: "幻希赛隆资产生成",
   description: "Next.js batch image generation system with NAS storage",
 };
 

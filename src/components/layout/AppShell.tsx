@@ -221,7 +221,7 @@ export function AppShell({ sidebar, main, panel }: AppShellProps) {
         <div className="workbench-queue-content flex h-full w-[300px] flex-col bg-zinc-950">
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-4">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-zinc-100">幻希塞隆</div>
+              <div className="text-sm font-semibold text-zinc-100">幻希赛隆</div>
               <div className="mt-0.5 text-xs text-zinc-500">资产生成任务</div>
             </div>
             <button
