@@ -277,4 +277,17 @@ export class SynologyStorageAdapter implements StorageAdapter {
 
     return response.data;
   }
+
+  async getPublicUrl(objectKey: string): Promise<string | null> {
+    const fullPath = this.resolvePath(objectKey);
+    const sid = await this.getSid();
+    const url = new URL("/webapi/entry.cgi", this.baseUrl);
+    url.searchParams.set("api", "SYNO.FileStation.Download");
+    url.searchParams.set("version", "2");
+    url.searchParams.set("method", "download");
+    url.searchParams.set("path", fullPath);
+    url.searchParams.set("mode", "download");
+    url.searchParams.set("_sid", sid);
+    return url.toString();
+  }
 }

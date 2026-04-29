@@ -17,4 +17,5 @@ export interface StorageAdapter {
   container: string;
   uploadBuffer(input: UploadInput): Promise<UploadResult>;
   downloadBuffer(objectKey: string): Promise<Buffer>;
+  getPublicUrl?(objectKey: string): Promise<string | null>;
 }

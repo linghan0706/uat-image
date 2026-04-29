@@ -1,9 +1,13 @@
 import { query } from "@/lib/db/pg";
-import type { Capability } from "@/lib/db/types";
-import { env } from "@/lib/env";
+import type { Capability, JsonValue } from "@/lib/db/types";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { getModelProvider } from "@/lib/model-providers";
+import {
+  type CharacterProfile,
+  isValidCharacterProfile,
+} from "@/lib/prompt/character-profile";
+import { assemble as assemblePromptWithEngine } from "@/lib/prompt/engine";
 import { getStorageAdapter } from "@/lib/storage";
 import { makeImageObjectKey, sha256Hex } from "@/lib/utils";
 import {
@@ -16,7 +20,6 @@ import {
 const toCapability = (value: string): Capability => value as Capability;
 
 type PortraitReference = {
-  url: string;
   nasObjectKey: string;
   format: string;
 };
@@ -48,44 +51,11 @@ const getCharacterImageCount = async (batchJobId: bigint, characterName: string)
   return result.rows[0]?.count ?? 0;
 };
 
-const toAbsoluteUrl = (urlOrPath: string) => {
-  if (/^https?:\/\//i.test(urlOrPath)) {
-    return urlOrPath;
-  }
-  return new URL(urlOrPath, env.webBaseUrl).toString();
-};
-
-const isProviderReachableUrl = (value: string) => {
-  if (!/^https?:\/\//i.test(value)) {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    const isPrivateIpv4 =
-      /^10\./.test(hostname) ||
-      /^192\.168\./.test(hostname) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
-    return (
-      hostname !== "localhost" &&
-      hostname !== "127.0.0.1" &&
-      hostname !== "0.0.0.0" &&
-      hostname !== "::1" &&
-      !hostname.endsWith(".local") &&
-      !isPrivateIpv4
-    );
-  } catch {
-    return false;
-  }
-};
-
 const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<PortraitReference> => {
   const source = await query<{
     id: bigint;
     capability: Capability;
     isSelectedPortrait: boolean;
-    accessUrl: string | null;
     nasObjectKey: string;
     format: string;
   }>(
@@ -94,7 +64,6 @@ const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<Por
         id,
         capability,
         is_selected_portrait AS "isSelectedPortrait",
-        access_url AS "accessUrl",
         nas_object_key AS "nasObjectKey",
         format
       FROM image_results
@@ -109,7 +78,6 @@ const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<Por
   }
 
   return {
-    url: toAbsoluteUrl(source.accessUrl ?? `/api/v1/files/image-results/${source.id.toString()}`),
     nasObjectKey: source.nasObjectKey,
     format: source.format,
   };
@@ -118,8 +86,7 @@ const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<Por
 const downloadPortraitAsDataUri = async (ref: PortraitReference): Promise<string> => {
   const storage = getStorageAdapter();
   const buffer = await storage.downloadBuffer(ref.nasObjectKey);
-  const mime = mimeFromFormat(ref.format);
-  return `data:${mime};base64,${buffer.toString("base64")}`;
+  return `data:${mimeFromFormat(ref.format)};base64,${buffer.toString("base64")}`;
 };
 
 const buildProviderParams = (
@@ -130,6 +97,87 @@ const buildProviderParams = (
   reference_image_url: referenceImageValue,
   reference_images: [referenceImageValue],
 });
+
+type ThreeViewPromptBlocksSnapshot = {
+  source_mode: "template";
+  part1: string | null;
+  part2: string | null;
+  part3: null;
+  part4: string | null;
+  scene_description: string | null;
+  style_key: string | null;
+};
+
+type ThreeViewPromptRefreshItem = {
+  id: bigint;
+  prompt: string;
+  negativePrompt: string | null;
+  modelKey: string;
+  characterProfile: JsonValue | null;
+  styleKey: string | null;
+};
+
+const toCharacterProfile = (value: JsonValue | null): CharacterProfile | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const profile = value as Partial<CharacterProfile>;
+  return isValidCharacterProfile(profile) ? profile : null;
+};
+
+const buildThreeViewPromptForExecution = (item: ThreeViewPromptRefreshItem) => {
+  const assembled = assemblePromptWithEngine({
+    preset: "THREE_VIEW",
+    style_key: item.styleKey,
+    profile: toCharacterProfile(item.characterProfile),
+    modelKey: item.modelKey,
+  });
+
+  return {
+    prompt: assembled.prompt,
+    negativePrompt: assembled.negative_prompt,
+    promptBlocks: {
+      source_mode: "template",
+      part1: assembled.prompt_snapshot.part1,
+      part2: assembled.prompt_snapshot.part2,
+      part3: null,
+      part4: assembled.prompt_snapshot.part4,
+      scene_description: assembled.prompt_snapshot.scene_description,
+      style_key: assembled.prompt_snapshot.style_key,
+    } satisfies ThreeViewPromptBlocksSnapshot,
+  };
+};
+
+const refreshThreeViewPromptForExecution = async (item: ThreeViewPromptRefreshItem) => {
+  const refreshed = buildThreeViewPromptForExecution(item);
+  if (refreshed.prompt === item.prompt && refreshed.negativePrompt === item.negativePrompt) {
+    return refreshed;
+  }
+
+  await query(
+    `
+      UPDATE job_items
+      SET
+        prompt = $2,
+        prompt_blocks = $3,
+        negative_prompt = $4
+      WHERE id = $1
+    `,
+    [item.id, refreshed.prompt, refreshed.promptBlocks as JsonValue, refreshed.negativePrompt],
+  );
+
+  logger.info(
+    {
+      itemId: item.id.toString(),
+      promptLength: refreshed.prompt.length,
+      negativePromptLength: refreshed.negativePrompt.length,
+    },
+    "Refreshed THREE_VIEW prompt before generation",
+  );
+
+  return refreshed;
+};
 
 export const executeJobItem = async (itemId: bigint) => {
   const item = await getJobItemWithBatch(itemId);
@@ -150,44 +198,21 @@ export const executeJobItem = async (itemId: bigint) => {
 
   let portraitRef: PortraitReference | null = null;
 
-  const baseInput = {
+  let baseInput = {
     capability,
     modelKey: item.modelKey,
     prompt: item.prompt,
     negativePrompt: item.negativePrompt,
   };
 
-  const callProviderWithFallback = async () => {
+  const callProviderWithReference = async () => {
     if (!portraitRef) {
       return provider.generateImage({ ...baseInput, params: runParams });
     }
 
-    if (!isProviderReachableUrl(portraitRef.url)) {
-      logger.info(
-        { itemId: itemId.toString(), portraitUrl: portraitRef.url },
-        "Using inline source portrait because reference URL is not reachable by provider",
-      );
-      const dataUri = await downloadPortraitAsDataUri(portraitRef);
-      const inlineParams = buildProviderParams(runParams, dataUri);
-      return provider.generateImage({ ...baseInput, params: inlineParams });
-    }
-
-    const urlParams = buildProviderParams(runParams, portraitRef.url);
-    try {
-      return await provider.generateImage({ ...baseInput, params: urlParams });
-    } catch (urlError) {
-      // 我们自己到 SKY 的连接超时 —— 换 base64 只会更慢，直接抛
-      if (urlError instanceof AppError && urlError.code === "E_PROVIDER_TIMEOUT") {
-        throw urlError;
-      }
-      logger.warn(
-        { err: urlError, itemId: itemId.toString(), portraitUrl: portraitRef.url },
-        "Reference image URL unreachable by provider; retrying with base64 data URI",
-      );
-      const dataUri = await downloadPortraitAsDataUri(portraitRef);
-      const fallbackParams = buildProviderParams(runParams, dataUri);
-      return provider.generateImage({ ...baseInput, params: fallbackParams });
-    }
+    const dataUri = await downloadPortraitAsDataUri(portraitRef);
+    const urlParams = buildProviderParams(runParams, dataUri);
+    return provider.generateImage({ ...baseInput, params: urlParams });
   };
 
   try {
@@ -207,9 +232,15 @@ export const executeJobItem = async (itemId: bigint) => {
         );
       }
       portraitRef = await getSourcePortraitReference(item.sourcePortraitId);
+      const refreshedPrompt = await refreshThreeViewPromptForExecution(item);
+      baseInput = {
+        ...baseInput,
+        prompt: refreshedPrompt.prompt,
+        negativePrompt: refreshedPrompt.negativePrompt,
+      };
     }
 
-    const output = await callProviderWithFallback();
+    const output = await callProviderWithReference();
 
     let charSeqOffset = 0;
     if (characterName) {

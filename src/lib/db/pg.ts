@@ -17,11 +17,8 @@ export const db =
     max: env.dbPoolMax,
     connectionTimeoutMillis: env.dbConnectTimeoutMs,
     query_timeout: env.dbQueryTimeoutMs,
+    options: "-c timezone=Asia/Shanghai",
   });
-
-db.on("connect", (client) => {
-  client.query("SET timezone = 'Asia/Shanghai'");
-});
 
 if (process.env.NODE_ENV !== "production") {
   globalForPg.pgPool = db;

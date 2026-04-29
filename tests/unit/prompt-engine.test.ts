@@ -118,7 +118,7 @@ test("THREE_VIEW prompt 使用三视图 part1 和三视图硬约束", () => {
   assert.match(prompt, /无阴影/, "三视图硬约束必须包含无阴影");
 });
 
-test("THREE_VIEW prompt 不注入风格、part4 或角色档案", () => {
+test("THREE_VIEW prompt 注入风格锁和来源角色档案，但不注入 part4", () => {
   const { prompt, prompt_snapshot } = assemble({
     preset: "THREE_VIEW",
     style_key: "xuanhuan_live_action",
@@ -126,14 +126,14 @@ test("THREE_VIEW prompt 不注入风格、part4 或角色档案", () => {
     modelKey: "nano_banana",
     part4: "cinematic close-up poster",
   });
-  assert.ok(!prompt.includes("风格："), "三视图不应包含风格层");
+  assert.ok(prompt.includes("风格："), "三视图应包含风格锁，防止模型把参考图改画风");
   assert.ok(!prompt.includes("参考风格："), "三视图不应包含 part4");
-  assert.ok(!prompt.includes("角色设定（不可更改）："), "三视图不应包含角色档案");
-  assert.equal(prompt_snapshot.part2_applicable, false);
-  assert.equal(prompt_snapshot.profile_applicable, false);
+  assert.ok(prompt.includes("角色设定（不可更改）："), "三视图应包含来源角色档案");
+  assert.equal(prompt_snapshot.part2_applicable, true);
+  assert.equal(prompt_snapshot.profile_applicable, true);
   assert.equal(prompt_snapshot.part4_applicable, false);
-  assert.equal(prompt_snapshot.layers.find((layer) => layer.id === "L2_STYLE_GUARDED")?.included, false);
-  assert.equal(prompt_snapshot.layers.find((layer) => layer.id === "L3_CHARACTER_PROFILE")?.included, false);
+  assert.equal(prompt_snapshot.layers.find((layer) => layer.id === "L2_STYLE_GUARDED")?.included, true);
+  assert.equal(prompt_snapshot.layers.find((layer) => layer.id === "L3_CHARACTER_PROFILE")?.included, true);
   assert.equal(prompt_snapshot.layers.find((layer) => layer.id === "L4_REFERENCE_STYLE")?.included, false);
 });
 

@@ -5,6 +5,12 @@ import { AppError } from "@/lib/errors";
 import { isHttpTimeoutError, requestBytes, requestText, type ServerHttpResponse } from "@/lib/http/client";
 import { logger } from "@/lib/logger";
 import { buildSkyRsaAuthHeaders } from "@/lib/model-providers/sky-rsa-auth";
+import {
+  buildSkyRsaRequestBodyPreview,
+  modelSupportsCapability,
+  parseSkySizeParam,
+  resolveSkyRsaPath,
+} from "@/lib/model-providers/sky-rsa-request";
 import type {
   GeneratedArtifact,
   GenerateImageInput,
@@ -14,224 +20,6 @@ import type {
 } from "@/lib/model-providers/types";
 
 type PlainRecord = Record<string, unknown>;
-
-type ModelSpec = {
-  id: string;
-  match: (modelKey: string) => boolean;
-  capabilities: ModelCapability[];
-  path: string;
-  channel: string;
-  buildBody: (input: GenerateImageInput, params: PlainRecord) => unknown;
-};
-
-const parseSizeParam = (params: Record<string, unknown>): { width: number; height: number } => {
-  const raw = params.size;
-  if (typeof raw === "string") {
-    const match = raw.match(/^(\d+)\s*[xX×]\s*(\d+)$/);
-    if (match) {
-      return { width: Number(match[1]), height: Number(match[2]) };
-    }
-  }
-  return { width: 1024, height: 1024 };
-};
-
-const normalizeModelKey = (value: string) => value.trim().toLowerCase();
-
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-
-const sizeToAspectRatio = (value: unknown): string | null => {
-  if (typeof value !== "string") return null;
-  const match = value.match(/^(\d+)\s*[xX×]\s*(\d+)$/);
-  if (!match) return null;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return null;
-  }
-  const divisor = gcd(width, height);
-  return `${width / divisor}:${height / divisor}`;
-};
-
-const extractReferenceImageUrl = (params: PlainRecord): string | null => {
-  const direct = params.reference_image_url;
-  if (typeof direct === "string" && direct) {
-    return direct;
-  }
-  const list = params.reference_images;
-  if (Array.isArray(list)) {
-    const first = list.find((item): item is string => typeof item === "string" && item.length > 0);
-    if (first) return first;
-  }
-  return null;
-};
-
-const stripReferenceFields = (params: PlainRecord): PlainRecord => {
-  const { reference_image_url: _r, reference_images: _rs, ...rest } = params;
-  void _r;
-  void _rs;
-  return rest;
-};
-
-const mimeFromReferenceImage = (imageRef: string): string => {
-  const lower = imageRef.toLowerCase();
-  if (lower.startsWith("data:image/")) {
-    const match = lower.match(/^data:([^;,]+)/);
-    if (match?.[1]) return match[1];
-  }
-  if (lower.includes(".webp") || lower.includes("image/webp")) return "image/webp";
-  if (lower.includes(".jpg") || lower.includes(".jpeg") || lower.includes("image/jpeg")) return "image/jpeg";
-  return "image/png";
-};
-
-const dataForInlineImage = (imageRef: string): string => {
-  if (!imageRef.startsWith("data:image/")) {
-    return imageRef;
-  }
-  const commaIndex = imageRef.indexOf(",");
-  return commaIndex >= 0 ? imageRef.slice(commaIndex + 1) : imageRef;
-};
-
-const buildTextToImageBody = (input: GenerateImageInput, params: PlainRecord, channel: string) => {
-  const config = { ...params };
-  if (input.negativePrompt) {
-    config.negative_prompt = input.negativePrompt;
-  }
-  return {
-    type: "text_to_image",
-    channel,
-    model: input.modelKey,
-    is_stream: false,
-    is_async: false,
-    prompt: input.prompt,
-    config,
-  };
-};
-
-/** MJ 使用原生 `--no a, b, c` 语法表达反向词，写入 prompt 末尾；不传 config.negative_prompt */
-const buildMjTextToImageBody = (input: GenerateImageInput, params: PlainRecord, channel: string) => {
-  const config = { ...params };
-  const aspectRatio = typeof config.aspect_ratio === "string" ? config.aspect_ratio : sizeToAspectRatio(config.size);
-  // MJ 网关对扩散参数敏感：负向词放入 --no，比例用 aspect_ratio，避免透传 cfg/steps/size。
-  delete config.negative_prompt;
-  delete config.cfg;
-  delete config.steps;
-  delete config.size;
-  if (aspectRatio) {
-    config.aspect_ratio = aspectRatio;
-  }
-
-  const basePrompt = input.prompt.trim();
-  const negativeTerms = (input.negativePrompt ?? "")
-    .split(/[,，\n]/)
-    .map((term) => term.trim())
-    .filter(Boolean);
-  const hasExistingNo = /(?:^|\s)--no\b/i.test(basePrompt);
-  const finalPrompt =
-    negativeTerms.length > 0 && !hasExistingNo
-      ? `${basePrompt} --no ${negativeTerms.join(", ")}`
-      : basePrompt;
-
-  return {
-    type: "text_to_image",
-    channel,
-    model: input.modelKey,
-    is_stream: false,
-    is_async: false,
-    prompt: finalPrompt,
-    config,
-  };
-};
-
-const buildImageToImageBody = (
-  input: GenerateImageInput,
-  params: PlainRecord,
-  channel: string,
-  imageRef: string,
-) => {
-  const config = stripReferenceFields(params);
-  if (config.count === undefined) {
-    config.count = 1;
-  }
-  if (input.negativePrompt) {
-    config.negative_prompt = input.negativePrompt;
-  }
-  return {
-    type: "image_to_image",
-    channel,
-    model: input.modelKey,
-    is_stream: false,
-    prompt: [
-      {
-        role: "user",
-        parts: [
-          { text: input.prompt },
-          {
-            inline_data: {
-              data: dataForInlineImage(imageRef),
-              mime_type: mimeFromReferenceImage(imageRef),
-            },
-          },
-        ],
-      },
-    ],
-    config,
-  };
-};
-
-const modelRegistry: ModelSpec[] = [
-  {
-    id: "mj",
-    match: (modelKey) => normalizeModelKey(modelKey) === normalizeModelKey(env.skyTextToImageModelMj),
-    capabilities: ["TEXT_TO_IMAGE"],
-    path: env.skyModelGeneratePathMj,
-    channel: env.skyTextToImageChannelMj,
-    buildBody: (input, params) => buildMjTextToImageBody(input, params, env.skyTextToImageChannelMj),
-  },
-  {
-    id: "nano_banana",
-    match: (modelKey) =>
-      normalizeModelKey(modelKey) === normalizeModelKey(env.skyTextToImageModelNanoBanana),
-    capabilities: ["TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"],
-    path: env.skyModelGeneratePathNanoBanana,
-    channel: env.skyTextToImageChannelNanoBanana,
-    buildBody: (input, params) => {
-      const refUrl = extractReferenceImageUrl(params);
-      if (refUrl) {
-        return buildImageToImageBody(input, params, env.skyTextToImageChannelNanoBanana, refUrl);
-      }
-      return buildTextToImageBody(input, params, env.skyTextToImageChannelNanoBanana);
-    },
-  },
-];
-
-const findModelSpec = (modelKey: string): ModelSpec | null =>
-  modelRegistry.find((spec) => spec.match(modelKey)) ?? null;
-
-export const modelSupportsCapability = (
-  modelKey: string,
-  capability: ModelCapability,
-): boolean => {
-  const spec = findModelSpec(modelKey);
-  return spec?.capabilities.includes(capability) ?? false;
-};
-
-const resolveCapabilityFallbackPath = (input: GenerateImageInput) => {
-  switch (input.capability) {
-    case "PORTRAIT":
-      return env.skyModelGeneratePathPortrait;
-    case "THREE_VIEW":
-      return env.skyModelGeneratePathThreeView;
-    case "SCENE_CONCEPT":
-      return env.skyModelGeneratePathScene;
-    default:
-      return env.skyModelGeneratePathScene;
-  }
-};
-
-const resolvePath = (input: GenerateImageInput, spec: ModelSpec | null) => {
-  if (spec) return spec.path;
-  return resolveCapabilityFallbackPath(input);
-};
 
 const guessFormat = (source: string): GeneratedArtifact["format"] => {
   const lower = source.toLowerCase();
@@ -352,6 +140,8 @@ const parseResponseJson = (raw: string, contentType: string) => {
   return JSON.parse(raw) as PlainRecord;
 };
 
+const truncate = (value: string, max = 800) => (value.length > max ? `${value.slice(0, max)}...` : value);
+
 const extractProviderMessage = (payload: PlainRecord): string => {
   const candidates = [
     payload.message,
@@ -365,44 +155,89 @@ const extractProviderMessage = (payload: PlainRecord): string => {
     (payload.result as PlainRecord | undefined)?.error,
   ];
   const hit = candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const data = typeof payload.data === "string" && payload.data.trim().length > 0 ? payload.data : null;
+  if (hit && data) return `${hit}: ${truncate(data, 600)}`;
   if (hit) return hit;
+  if (data) return truncate(data, 600);
   return "Model returned business error.";
 };
 
-const truncate = (value: string, max = 800) => (value.length > max ? `${value.slice(0, max)}...` : value);
+const getUrlHost = (value: unknown) => {
+  if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return null;
+  try {
+    return new URL(value).host;
+  } catch {
+    return null;
+  }
+};
+
+const summarizePrompt = (prompt: unknown) => {
+  if (typeof prompt === "string") {
+    return {
+      prompt_type: "text",
+      prompt_len: prompt.length,
+      prompt_head: truncate(prompt, 240),
+      has_reference_image: false,
+      reference_image_host: null,
+    };
+  }
+
+  if (!Array.isArray(prompt)) {
+    return {
+      prompt_type: typeof prompt,
+      prompt_len: null,
+      prompt_head: null,
+      has_reference_image: false,
+      reference_image_host: null,
+    };
+  }
+
+  let textLength = 0;
+  let imageData: unknown = null;
+  for (const message of prompt) {
+    if (!message || typeof message !== "object") continue;
+    const parts = (message as PlainRecord).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue;
+      const partRecord = part as PlainRecord;
+      if (typeof partRecord.text === "string") {
+        textLength += partRecord.text.length;
+      }
+      const inlineData = partRecord.inline_data as PlainRecord | undefined;
+      if (typeof inlineData?.data === "string") {
+        imageData = inlineData.data;
+      }
+    }
+  }
+
+  return {
+    prompt_type: "parts",
+    prompt_len: textLength,
+    prompt_head: null,
+    has_reference_image: typeof imageData === "string" && imageData.length > 0,
+    reference_image_host: getUrlHost(imageData),
+  };
+};
 
 const summarizeRequestBody = (body: unknown) => {
   if (!body || typeof body !== "object") return body;
   const record = body as PlainRecord;
+  const promptSummary = summarizePrompt(record.prompt);
+  const imageUrlsHost = getUrlHost(record.image_urls);
+  const hasImageUrls = typeof record.image_urls === "string" && record.image_urls.length > 0;
   return {
     type: record.type,
     channel: record.channel,
     model: record.model,
     is_stream: record.is_stream,
     is_async: record.is_async,
-    prompt_len: typeof record.prompt === "string" ? record.prompt.length : null,
-    prompt_head: typeof record.prompt === "string" ? truncate(record.prompt, 240) : null,
+    ...promptSummary,
+    has_reference_image: promptSummary.has_reference_image || hasImageUrls,
+    reference_image_host: promptSummary.reference_image_host ?? imageUrlsHost,
     has_image: typeof record.image === "string" && record.image.length > 0,
+    image_host: getUrlHost(record.image),
     config: record.config,
-  };
-};
-
-const buildRequestBody = (input: GenerateImageInput, spec: ModelSpec | null) => {
-  const params = { ...input.params };
-  // Remove view_set from params sent to model — three-view is generated as a single image
-  delete params.view_set;
-
-  if (spec) {
-    return spec.buildBody(input, params);
-  }
-
-  return {
-    model: input.modelKey,
-    capability: input.capability,
-    prompt: input.prompt,
-    negative_prompt: input.negativePrompt ?? undefined,
-    params,
-    stream: false,
   };
 };
 
@@ -420,12 +255,11 @@ export class SkyRsaModelProvider implements ModelProvider {
 
     const requestId = `sky_${nanoid(12)}`;
     const authHeaders = buildSkyRsaAuthHeaders(requestId);
-    const spec = findModelSpec(input.modelKey);
-    const targetPath = resolvePath(input, spec);
+    const targetPath = resolveSkyRsaPath(input);
     const targetUrl = new URL(targetPath, env.skyModelUrl).toString();
 
-    const requestedSize = parseSizeParam(input.params);
-    const body = buildRequestBody(input, spec);
+    const requestedSize = parseSkySizeParam(input.params);
+    const body = buildSkyRsaRequestBodyPreview(input);
 
     let response: ServerHttpResponse<string>;
     try {

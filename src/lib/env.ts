@@ -54,6 +54,7 @@ export const env = {
     process.env.SKY_MODEL_GENERATE_PATH_NANO_BANANA ??
     process.env.SKY_COVER_GENERATE_PATH ??
     "/api/v1/gemini/generate_images",
+  skyModelGeneratePathImageToImage: process.env.SKY_MODEL_GENERATE_PATH_IMAGE_TO_IMAGE ?? "/api/v1/generate_images",
   skyModelTimeoutMs: Number(process.env.SKY_MODEL_TIMEOUT_MS ?? 120000),
   structuredParseEnabled: (process.env.STRUCTURED_PARSE_ENABLED ?? "false") === "true",
   structuredParseProvider: process.env.STRUCTURED_PARSE_PROVIDER ?? "claude",
@@ -76,7 +77,7 @@ export const env = {
   synologyShareRoot: process.env.SYNOLOGY_SHARE_ROOT ?? "/",
   webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS ?? 15000),
-  dbPoolMax: Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 3)),
+  dbPoolMax: Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 10)),
   dbConnectTimeoutMs: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? process.env.REQUEST_TIMEOUT_MS ?? 15000),
   dbQueryTimeoutMs: Number(process.env.DB_QUERY_TIMEOUT_MS ?? process.env.REQUEST_TIMEOUT_MS ?? 15000),
   defaultModelTimeoutSec: Number(process.env.DEFAULT_MODEL_TIMEOUT_SEC ?? 90),

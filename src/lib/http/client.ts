@@ -43,7 +43,40 @@ const toResponse = <T,>(status: number, headers: AxiosResponseHeaders | RawAxios
   headers: createHeaderReader(headers),
 });
 
-export const isHttpTimeoutError = (error: unknown) => axios.isAxiosError(error) && error.code === "ECONNABORTED";
+// Codes that indicate the request never completed at the network layer:
+// connect timeout, DNS failure, refused/reset connections, socket hangups, etc.
+// All are retried/labelled as provider timeouts because there is no upstream
+// response to interpret.
+const NETWORK_FAILURE_CODES = new Set([
+  "ECONNABORTED", // axios read/overall timeout
+  "ETIMEDOUT", // OS-level connect/read timeout
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND", // DNS failure
+  "EAI_AGAIN", // transient DNS failure
+  "EPIPE",
+  "ERR_SOCKET_CONNECTION_TIMEOUT",
+  "ERR_NETWORK",
+]);
+
+export const isHttpTimeoutError = (error: unknown) => {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+  if (error.code && NETWORK_FAILURE_CODES.has(error.code)) {
+    return true;
+  }
+  // Some Node/undici versions surface connect failures only via the message.
+  const message = error.message?.toLowerCase() ?? "";
+  return (
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("socket hang up") ||
+    message.includes("network")
+  );
+};
 
 export const requestText = async (config: ServerHttpRequestConfig): Promise<ServerHttpResponse<string>> => {
   const response = await serverHttpClient.request<string>({
