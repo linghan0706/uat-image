@@ -1,5 +1,6 @@
 import { useState, type RefObject } from "react";
 import { IconBolt, IconDocument, IconUpload, IconCheck } from "@/components/icons";
+import type { ImportParseMode } from "@/lib/api/image-workflow.types";
 import { formatFileSize } from "@/lib/format";
 
 interface ImportSectionProps {
@@ -12,10 +13,18 @@ interface ImportSectionProps {
   fileInputRef: RefObject<HTMLInputElement | null>;
   dedupe: boolean;
   setDedupe: (v: boolean) => void;
+  parseMode: ImportParseMode;
+  setParseMode: (v: ImportParseMode) => void;
   parseLoading: boolean;
   onParseText: () => void;
   onParseFile: () => void;
 }
+
+const parseModeOptions: Array<{ value: ImportParseMode; label: string }> = [
+  { value: "auto", label: "自动" },
+  { value: "local", label: "本地" },
+  { value: "claude", label: "Claude" },
+];
 
 export function ImportSection({
   importTab,
@@ -27,6 +36,8 @@ export function ImportSection({
   fileInputRef,
   dedupe,
   setDedupe,
+  parseMode,
+  setParseMode,
   parseLoading,
   onParseText,
   onParseFile,
@@ -68,6 +79,23 @@ export function ImportSection({
             文件上传
           </span>
         </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-zinc-950 p-1">
+        {parseModeOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+              parseMode === option.value
+                ? "bg-white text-zinc-950"
+                : "text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            }`}
+            onClick={() => setParseMode(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
       {importTab === "text" && (

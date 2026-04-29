@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { IconClose, IconChevronLeft, IconChevronRight, IconUser, IconDownload } from "@/components/icons";
 import { CAPABILITY_DISPLAY } from "@/lib/constants";
@@ -25,22 +25,20 @@ export function Lightbox() {
 
   /* Track the image's natural (intrinsic) size so we can compute a
      layout-affecting scaled size instead of relying on CSS scale(). */
-  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const [naturalSize, setNaturalSize] = useState<{ index: number; w: number; h: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const onImgLoad = useCallback(() => {
     const el = imgRef.current;
-    if (el) setNaturalSize({ w: el.naturalWidth, h: el.naturalHeight });
-  }, []);
-
-  // Reset natural size when switching images
-  useEffect(() => {
-    setNaturalSize(null);
+    if (el && lightboxIndex !== null) {
+      setNaturalSize({ index: lightboxIndex, w: el.naturalWidth, h: el.naturalHeight });
+    }
   }, [lightboxIndex]);
 
   if (lightboxIndex === null || !imageResults[lightboxIndex]) return null;
 
   const img = imageResults[lightboxIndex];
+  const currentNaturalSize = naturalSize?.index === lightboxIndex ? naturalSize : null;
   const charName = characterNameByItemId.get(img.job_item_id);
   const hasPrev = lightboxIndex > 0;
   const hasNext = lightboxIndex < imageResults.length - 1;
@@ -62,15 +60,15 @@ export function Lightbox() {
   let imgW: number | undefined;
   let imgH: number | undefined;
 
-  if (naturalSize) {
-    const ar = naturalSize.w / naturalSize.h;
+  if (currentNaturalSize) {
+    const ar = currentNaturalSize.w / currentNaturalSize.h;
 
     // Base fit at scale=1: contain inside 88vw × 70vh
     const maxW1 = vw * 0.88;
     const maxH1 = vh * 0.70;
-    const fitRatio = Math.min(maxW1 / naturalSize.w, maxH1 / naturalSize.h, 1);
-    const baseW = naturalSize.w * fitRatio;
-    const baseH = naturalSize.h * fitRatio;
+    const fitRatio = Math.min(maxW1 / currentNaturalSize.w, maxH1 / currentNaturalSize.h, 1);
+    const baseW = currentNaturalSize.w * fitRatio;
+    const baseH = currentNaturalSize.h * fitRatio;
 
     // Apply layout zoom (phase 1 only)
     let scaledW = baseW * layoutScale;

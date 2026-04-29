@@ -4,6 +4,7 @@ import { getImportTaskDetail } from "@/lib/api/import-tasks";
 import type {
   CreateBatchJobPayload,
   FunctionalCapability,
+  ImportParseMode,
   ImportTaskSubmitMode,
   ModelOption,
   PortraitBackgroundMode,
@@ -22,6 +23,7 @@ export function useCreateTask(callbacks: {
   const [textInput, setTextInput] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [dedupe, setDedupe] = useState(false);
+  const [parseMode, setParseMode] = useState<ImportParseMode>("auto");
   const [importTab, setImportTab] = useState<"text" | "file">("text");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,7 +127,7 @@ export function useCreateTask(callbacks: {
           formData.append("file", uploadFile);
         }
         formData.append("dedupe", dedupe ? "true" : "false");
-        formData.append("parse_mode", "claude");
+        formData.append("parse_mode", parseMode);
         formData.append("submit_mode", submitMode);
         if (styleKey) {
           formData.append("style_key", styleKey);
@@ -172,7 +174,7 @@ export function useCreateTask(callbacks: {
         setSubmitLoading(false);
       }
     },
-    [uploadFile, textInput, dedupe, styleKey, taskName, folderName, capability, buildParams, importTask, callbacks],
+    [uploadFile, textInput, dedupe, parseMode, styleKey, taskName, folderName, capability, buildParams, importTask, callbacks],
   );
 
   const submitBatch = useCallback(async (sourcePortraitIds: string[] = []) => {
@@ -276,6 +278,8 @@ export function useCreateTask(callbacks: {
     fileInputRef,
     dedupe,
     setDedupe,
+    parseMode,
+    setParseMode,
     // Portrait params
     portraitCount,
     setPortraitCount,

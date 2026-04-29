@@ -23,7 +23,6 @@ export function StyleSelector({ value, onChange }: StyleSelectorProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     getStylePresets()
       .then((data) => {
         if (cancelled) return;

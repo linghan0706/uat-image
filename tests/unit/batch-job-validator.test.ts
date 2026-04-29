@@ -110,6 +110,27 @@ register("PORTRAIT + 合法 character_profile → 应通过", () => {
   assert.equal(result.success, true, `应通过，实际 issues=${result.success ? "" : JSON.stringify(result.error.issues)}`);
 });
 
+register("PORTRAIT + 中文 character_profile.gender → 归一化后通过", () => {
+  const result = createBatchJobSchema.safeParse({
+    folder_name: "test-folder",
+    capability: "PORTRAIT",
+    source_type: "csv",
+    prompts: [
+      {
+        ...basePromptWithProfile,
+        character_profile: {
+          ...basePromptWithProfile.character_profile,
+          gender: "女性",
+        },
+      },
+    ],
+  });
+  assert.equal(result.success, true, `应通过，实际 issues=${result.success ? "" : JSON.stringify(result.error.issues)}`);
+  if (result.success) {
+    assert.equal(result.data.prompts[0]?.character_profile?.gender, "female");
+  }
+});
+
 register("PORTRAIT 场景模式 + CSV 缺 scene_description → 应通过，由生成阶段回落影棚", () => {
   const result = createBatchJobSchema.safeParse({
     folder_name: "test-folder",

@@ -148,11 +148,15 @@ export function AppShell({ sidebar, main, panel }: AppShellProps) {
   useEffect(() => {
     if (openPanelRequest === 0) return;
     writeStoredLayout({ queueCollapsed, panelCollapsed: false });
-    setPanelCollapsed((prev) => {
-      if (prev) triggerAnimating();
-      return false;
+    const frame = window.requestAnimationFrame(() => {
+      setPanelCollapsed((prev) => {
+        if (prev) triggerAnimating();
+        return false;
+      });
+      setMobileSurface("inspector");
     });
-    setMobileSurface("inspector");
+
+    return () => window.cancelAnimationFrame(frame);
   }, [openPanelRequest, queueCollapsed, triggerAnimating]);
 
   const navItems = [

@@ -158,6 +158,8 @@ export function CreateTaskForm() {
             fileInputRef={task.fileInputRef}
             dedupe={task.dedupe}
             setDedupe={task.setDedupe}
+            parseMode={task.parseMode}
+            setParseMode={task.setParseMode}
             parseLoading={task.importTask.parseLoading}
             onParseText={() => void task.submitAsyncImportTask("text", "PARSE_ONLY")}
             onParseFile={() => void task.submitAsyncImportTask("file", "PARSE_ONLY")}

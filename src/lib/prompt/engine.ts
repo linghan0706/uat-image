@@ -148,27 +148,6 @@ const buildSceneDescriptionLine = (sceneDescription: string): string =>
     "要求：该场景只作为背景环境服务于角色身份与世界观；不得加入第二个人物，不得遮挡角色全身轮廓，不得改变角色正面静态定妆照构图。",
   ].join("\n");
 
-const buildThreeViewStyleLock = (style: StylePreset): string => {
-  const realisticLock =
-    style.category === "realistic" || style.category === "cdrama"
-      ? [
-          "风格一致性最高优先级：来源定妆照如果是真人/影视/摄影质感，三视图也必须保持真人影视摄影质感、真实皮肤纹理、真实布料和金属材质。",
-          "严禁把来源定妆照改成彩绘、插画、油画、厚涂、二次元、概念设定稿、游戏原画或塑料手办质感。",
-          "Style lock: preserve the live-action / photographic look of the source portrait. Do not convert it into painterly illustration, concept art, oil painting, anime, game art, or toy-like render.",
-        ].join("\n")
-      : [
-          "风格一致性最高优先级：三视图必须继承来源定妆照的画风、线条、上色方式、材质表达和色彩系统，不得切换成另一种美术风格。",
-          "严禁把来源风格改成无关的彩绘、油画、厚涂、写实摄影、欧美游戏原画或塑料手办质感。",
-          "Style lock: preserve the exact visual style of the source portrait. Do not switch to an unrelated painterly, oil-painting, photorealistic, western game-art, or toy-like style.",
-        ].join("\n");
-
-  return [
-    realisticLock,
-    "已选风格标签必须生效，且只作为材质/审美/服装质感约束，不得覆盖来源人物身份与脸部一致性。",
-    buildStyleLine(style),
-  ].join("\n\n");
-};
-
 const buildGenderPriorityLock = (profile: CharacterProfile): string => {
   if (profile.gender === "male") {
     return [
@@ -225,8 +204,7 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
   const portraitBackgroundMode =
     requestedPortraitBackgroundMode === "scene" && requestedSceneDescription ? "scene" : "studio";
 
-  // THREE_VIEW 主要由定妆照参考图（i2i）保证视觉一致性；如果来源定妆照带有
-  // CharacterProfile，也把性别和服装等硬约束写进 prompt，避免模型忽略参考图后自由发挥。
+  // THREE_VIEW 主要由定妆照参考图（i2i）保证视觉一致性，不再注入风格层或角色档案。
   // PORTRAIT/SCENE_CONCEPT 仍要求完整的结构化 profile。
   if (!isThreeView && (!isValidCharacterProfile(input.profile) || !isExplicitGender(input.profile.gender))) {
     throw new Error("PromptEngine.assemble: invalid CharacterProfile (name + explicit gender required).");
@@ -245,7 +223,8 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
   const styleKeyIsFallback =
     normalizedStyleKey.length > 0 && resolvedStyle.key !== normalizedStyleKey;
 
-  const profileApplicable = isValidCharacterProfile(input.profile) && isExplicitGender(input.profile.gender);
+  const profileApplicable =
+    !isThreeView && isValidCharacterProfile(input.profile) && isExplicitGender(input.profile.gender);
   const profileRendered = profileApplicable ? renderCharacterProfile(input.profile!) : "";
   const part4 = isThreeView ? "" : resolvePart4(resolvedStyle, input.part4);
   const sceneDescription =
@@ -262,9 +241,6 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
         "The source portrait image is the only identity reference. Preserve the exact same person from the source portrait: same gender, same age impression, same face, same hairstyle, same outfit silhouette and colors, same accessories. Do not gender swap. Do not replace the character with another person.",
         "脸部一致性最高优先级：左区面部特写必须复现来源定妆照的人脸身份。保持相同脸型轮廓、额头与发际线、眉形、眼型、双眼间距、鼻梁鼻尖、嘴唇形状、下巴与下颌线、肤色、面部比例和年龄感。右区三个全身视图即使角度不同，也必须使用同一张脸的结构，不得换脸、欧美化、男性化、年龄突变或生成陌生人。",
         "Facial identity lock, top priority: the left close-up must preserve the face identity from the source portrait. Keep the same face shape, forehead and hairline, eyebrow shape, eye shape, eye spacing, nose bridge and nose tip, lip shape, chin and jawline, skin tone, facial proportions, and age impression. Every full-body view must use this same facial structure.",
-        buildThreeViewStyleLock(resolvedStyle),
-        genderPriorityLock,
-        profileRendered,
         part1,
         tail,
       ]
@@ -313,14 +289,14 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
       id: "L2_STYLE_GUARDED",
       priority: 2,
       label: "受控风格层",
-      applicable: true,
-      included: Boolean(resolvedStyle.part2_content.trim()),
+      applicable: !isThreeView,
+      included: !isThreeView && Boolean(resolvedStyle.part2_content.trim()),
     },
     {
       id: "L3_CHARACTER_PROFILE",
       priority: 3,
       label: "结构化角色档案",
-      applicable: !isThreeView || profileApplicable,
+      applicable: !isThreeView,
       included: profileApplicable && Boolean(profileRendered),
     },
     {
@@ -339,8 +315,8 @@ export const assemble = (input: AssembleInput): AssembleOutput => {
     style_key: resolvedStyle.key,
     style_key_is_fallback: styleKeyIsFallback,
     part1,
-    part2: resolvedStyle.part2_content,
-    part2_applicable: true,
+    part2: isThreeView ? "" : resolvedStyle.part2_content,
+    part2_applicable: !isThreeView,
     profile: profileApplicable ? input.profile : null,
     profile_rendered: profileRendered,
     profile_applicable: profileApplicable,

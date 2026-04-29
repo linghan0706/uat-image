@@ -22,11 +22,27 @@ const toCsvFile = (csv: string) =>
 register("CSV 中文场景描述列写入 scene_description", async () => {
   const csv = [
     "角色名,性别,年龄段,身高体型,场景描述",
-    "林婉,female,青年,中等偏瘦,新闻编辑部外的玻璃走廊",
+    "林婉,女性,青年,中等偏瘦,新闻编辑部外的玻璃走廊",
   ].join("\n");
   const result = await parsePromptFile(toCsvFile(csv), false, { parseMode: "local" });
   assert.equal(result.valid_count, 1);
   assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
+  assert.equal(result.prompts[0]?.character_profile?.gender, "female");
+});
+
+register("CSV 性别列支持中文值并归一化", async () => {
+  const csv = [
+    "角色名,性别,年龄段,身高体型",
+    "林婉,女性,青年,中等偏瘦",
+    "陈默,男,中年,中等微胖",
+    "银翼,非二元性别,青年,修长挺拔",
+  ].join("\n");
+  const result = await parsePromptFile(toCsvFile(csv), false, { parseMode: "local" });
+  assert.equal(result.valid_count, 3);
+  assert.deepEqual(
+    result.prompts.map((prompt) => prompt.character_profile?.gender),
+    ["female", "male", "nonbinary"],
+  );
 });
 
 register("CSV dedupe 会保留同角色不同场景", async () => {

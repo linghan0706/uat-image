@@ -5,10 +5,14 @@ import {
   MAX_PROMPT_LENGTH,
   MAX_SCENE_DESCRIPTION_LENGTH,
 } from "@/lib/constants";
+import { normalizeGender } from "@/lib/prompt/character-profile";
 
 const capabilityEnum = z.enum(["PORTRAIT", "THREE_VIEW", "SCENE_CONCEPT"]);
 const sourceTypeEnum = z.enum(["text", "csv", "xlsx", "docx", "md", "txt"]);
-const genderEnum = z.enum(["male", "female", "nonbinary", "unknown"]);
+const genderEnum = z.preprocess(
+  (value) => (typeof value === "string" ? normalizeGender(value) : value),
+  z.enum(["male", "female", "nonbinary", "unknown"]),
+);
 const promptBlocksSchema = z.object({
   part1: z.string().trim().max(MAX_PROMPT_LENGTH).optional().nullable(),
   part2: z.string().trim().max(MAX_PROMPT_LENGTH).optional().nullable(),

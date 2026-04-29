@@ -2,6 +2,7 @@ export type Capability = "PORTRAIT" | "THREE_VIEW" | "SCENE_CONCEPT";
 export type FunctionalCapability = "PORTRAIT" | "THREE_VIEW";
 export type PortraitBackgroundMode = "studio" | "scene";
 export type ImportTaskSubmitMode = "PARSE_ONLY" | "CREATE_BATCH";
+export type ImportParseMode = "auto" | "local" | "claude";
 
 export type PromptSourceMode = "template";
 

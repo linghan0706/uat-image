@@ -10,6 +10,7 @@ import {
 } from "@/lib/constants";
 import { AppError } from "@/lib/errors";
 import {
+  deriveCharacterNameFromText,
   isExplicitGender,
   normalizeGender,
   sanitizeCharacterProfile,
@@ -60,6 +61,13 @@ type ParsedRowFields = {
   reference_prompt?: string;
   part4?: string;
   scene_description?: string;
+};
+
+type ParsedFieldEntry = {
+  lineNo: number;
+  fields: ParsedRowFields;
+  raw: string;
+  extParams?: Record<string, unknown>;
 };
 
 const normalizeMultiline = (value?: string | null) =>
@@ -245,20 +253,38 @@ const normalizeRecord = (record: Record<string, unknown>): ParsedRowFields => {
   return normalized;
 };
 
-const parseRecordRows = (
-  rows: Array<Record<string, unknown>>,
-  sourceType: "csv" | "xlsx",
+const hasKnownField = (fields: ParsedRowFields) =>
+  Object.values(fields).some((value) => typeof value === "string" && value.trim().length > 0);
+
+const appendFieldValue = (
+  target: ParsedRowFields,
+  field: keyof ParsedRowFields,
+  value: string | undefined | null,
+) => {
+  const normalized = normalizeMultiline(value);
+  if (!normalized) {
+    return;
+  }
+
+  const current = target[field];
+  target[field] = current ? `${current}\n${normalized}` : normalized;
+};
+
+const parseFieldEntries = (
+  entries: ParsedFieldEntry[],
+  sourceType: ParseResult["source_type"],
   dedupe: boolean,
   options?: ParseOptions,
+  rawCount = entries.length,
 ): ParseResult => {
   const prompts: ParsedPrompt[] = [];
   const errors: ParseResult["errors"] = [];
   const existed = new Set<string>();
 
-  rows.forEach((row, idx) => {
-    const lineNo = idx + 2;
-    const normalizedRow = normalizeRecord(row);
-    const raw = JSON.stringify(row);
+  entries.forEach((entry) => {
+    const lineNo = entry.lineNo;
+    const normalizedRow = entry.fields;
+    const raw = entry.raw;
 
     const rawName = normalizedRow.name?.trim() || normalizedRow.character_name?.trim() || "";
     if (!rawName) {
@@ -287,7 +313,7 @@ const parseRecordRows = (
       return;
     }
 
-    let extParams: Record<string, unknown> = {};
+    let extParams: Record<string, unknown> = entry.extParams ?? {};
     if (normalizedRow.ext_params_json?.trim()) {
       try {
         extParams = JSON.parse(normalizedRow.ext_params_json);
@@ -326,7 +352,22 @@ const parseRecordRows = (
     });
   });
 
-  return finalizePromptItems(prompts, sourceType, rows.length, errors);
+  return finalizePromptItems(prompts, sourceType, rawCount, errors);
+};
+
+const parseRecordRows = (
+  rows: Array<Record<string, unknown>>,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult => {
+  const entries = rows.map((row, idx): ParsedFieldEntry => ({
+    lineNo: idx + 2,
+    fields: normalizeRecord(row),
+    raw: JSON.stringify(row),
+  }));
+
+  return parseFieldEntries(entries, sourceType, dedupe, options, rows.length);
 };
 
 const parseCsv = (rawText: string, dedupe: boolean, options?: ParseOptions): ParseResult => {
@@ -353,6 +394,509 @@ const parseXlsx = (buffer: Buffer, dedupe: boolean, options?: ParseOptions): Par
   });
 
   return parseRecordRows(rows, "xlsx", dedupe, options);
+};
+
+const stripMarkdownPrefix = (line: string) =>
+  line
+    .trim()
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^>\s*/, "")
+    .replace(/^(?:[-*+]\s+|\d+[.)、]\s*)/, "")
+    .trim();
+
+const parseKeyValueLine = (line: string): { field: keyof ParsedRowFields; value: string } | null => {
+  const cleaned = stripMarkdownPrefix(line);
+  const match = cleaned.match(/^([^:：=]+?)\s*[:：=]\s*([\s\S]*)$/u);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const field = resolveColumnAlias(match[1]);
+  if (!field) {
+    return null;
+  }
+
+  return { field, value: match[2]?.trim() ?? "" };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const objectToOptionalString = (value: unknown) =>
+  typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ? String(value)
+    : undefined;
+
+const buildEntryFromJsonRecord = (
+  record: Record<string, unknown>,
+  index: number,
+): ParsedFieldEntry | null => {
+  const fields = normalizeRecord(record);
+  const profile = isRecord(record.character_profile) ? record.character_profile : null;
+
+  if (profile) {
+    appendFieldValue(fields, "name", objectToOptionalString(profile.name));
+    appendFieldValue(fields, "gender", objectToOptionalString(profile.gender));
+    appendFieldValue(fields, "age_band", objectToOptionalString(profile.age_band));
+    appendFieldValue(fields, "build", objectToOptionalString(profile.build));
+    appendFieldValue(fields, "complexion", objectToOptionalString(profile.complexion));
+    appendFieldValue(fields, "face", objectToOptionalString(profile.face));
+    appendFieldValue(fields, "hair", objectToOptionalString(profile.hair));
+    appendFieldValue(fields, "outfit", objectToOptionalString(profile.outfit));
+    appendFieldValue(fields, "accessories", objectToOptionalString(profile.accessories));
+    appendFieldValue(fields, "extra_visual", objectToOptionalString(profile.extra_visual));
+  }
+
+  if (isRecord(record.prompt_blocks)) {
+    appendFieldValue(fields, "part4", objectToOptionalString(record.prompt_blocks.part4));
+    appendFieldValue(
+      fields,
+      "scene_description",
+      objectToOptionalString(record.prompt_blocks.scene_description),
+    );
+  }
+
+  if (!hasKnownField(fields)) {
+    appendFieldValue(fields, "extra_visual", objectToOptionalString(record.prompt));
+  }
+
+  const extParams = isRecord(record.ext_params) ? record.ext_params : undefined;
+  if (!hasKnownField(fields) && !extParams) {
+    return null;
+  }
+
+  return {
+    lineNo: index + 1,
+    fields,
+    raw: JSON.stringify(record),
+    extParams,
+  };
+};
+
+const parseJsonTextLocally = (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult | null => {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+
+  const list = Array.isArray(parsed)
+    ? parsed
+    : isRecord(parsed) && Array.isArray(parsed.prompts)
+      ? parsed.prompts
+      : [parsed];
+
+  const entries = list
+    .map((item, index) => (isRecord(item) ? buildEntryFromJsonRecord(item, index) : null))
+    .filter((entry): entry is ParsedFieldEntry => entry !== null);
+
+  return entries.length > 0 ? parseFieldEntries(entries, sourceType, dedupe, options, entries.length) : null;
+};
+
+type TextDelimiter = "," | "\t" | "|" | "｜" | "，";
+
+const splitDelimitedLine = (line: string, delimiter: TextDelimiter) => {
+  const cleaned = line.trim();
+  if (delimiter === ",") {
+    try {
+      const rows = parseCsvSync(cleaned, {
+        delimiter,
+        relax_column_count: true,
+        relax_quotes: true,
+        skip_empty_lines: false,
+        trim: true,
+      }) as string[][];
+      return rows[0] ?? [];
+    } catch {
+      return cleaned.split(delimiter).map((cell) => cell.trim());
+    }
+  }
+
+  const source =
+    delimiter === "|" || delimiter === "｜"
+      ? cleaned.replace(/^[|｜]/, "").replace(/[|｜]$/, "")
+      : cleaned;
+  return source.split(delimiter).map((cell) => cell.trim());
+};
+
+const isMarkdownTableSeparator = (line: string) =>
+  /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line);
+
+const findDelimitedHeader = (
+  lines: Array<{ line: string; lineNo: number }>,
+): { index: number; delimiter: TextDelimiter; headers: string[] } | null => {
+  const delimiters = ["\t", "|", "｜", ",", "，"] as const;
+
+  for (const [index, item] of lines.entries()) {
+    if (!item.line.trim() || isMarkdownTableSeparator(item.line)) {
+      continue;
+    }
+
+    for (const delimiter of delimiters) {
+      const headers = splitDelimitedLine(item.line, delimiter);
+      const aliases = headers.map((header) => resolveColumnAlias(header)).filter(Boolean);
+      const hasName = headers.some((header) => {
+        const alias = resolveColumnAlias(header);
+        return alias === "name" || alias === "character_name";
+      });
+      if (headers.length >= 2 && aliases.length >= 2 && hasName) {
+        return { index, delimiter, headers };
+      }
+    }
+  }
+
+  return null;
+};
+
+const parseHeaderDelimitedTextLocally = (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult | null => {
+  const lines = text.split(/\r?\n/).map((line, index) => ({ line, lineNo: index + 1 }));
+  const header = findDelimitedHeader(lines);
+  if (!header) {
+    return null;
+  }
+
+  const entries: ParsedFieldEntry[] = [];
+  for (let index = header.index + 1; index < lines.length; index++) {
+    const item = lines[index];
+    if (!item || !item.line.trim() || isMarkdownTableSeparator(item.line)) {
+      continue;
+    }
+
+    const cells = splitDelimitedLine(item.line, header.delimiter);
+    if (cells.every((cell) => !cell.trim())) {
+      continue;
+    }
+
+    const record = Object.fromEntries(
+      header.headers.map((headerName, cellIndex) => [headerName, cells[cellIndex] ?? ""]),
+    );
+    entries.push({
+      lineNo: item.lineNo,
+      fields: normalizeRecord(record),
+      raw: item.line,
+    });
+  }
+
+  return entries.length > 0 ? parseFieldEntries(entries, sourceType, dedupe, options, entries.length) : null;
+};
+
+const looksLikeSceneSegment = (value: string) =>
+  /^(场景|背景|环境|地点|定妆场景)\b/u.test(value) ||
+  /(走廊|街角|街道|房间|办公室|店门口|铺门口|内景|外景|竹林|山门|停机坪|战场|森林|城市|酒馆|教室|庭院|码头)/u.test(
+    value,
+  );
+
+const appendLooseSegment = (fields: ParsedRowFields, segment: string) => {
+  const cleaned = stripMarkdownPrefix(segment)
+    .replace(/^(场景|背景|环境|地点|定妆场景)\s*[:：=]?\s*/u, "")
+    .trim();
+  if (!cleaned) {
+    return;
+  }
+
+  if (!fields.gender) {
+    const gender = normalizeGender(cleaned);
+    if (isExplicitGender(gender)) {
+      fields.gender = gender;
+      return;
+    }
+  }
+
+  if (!fields.age_band && /(儿童|少年|少女|青年|中年|老年|老人|成人|\d+\s*岁)/u.test(cleaned)) {
+    appendFieldValue(fields, "age_band", cleaned);
+    return;
+  }
+  if (
+    !fields.build &&
+    /(身高|体型|身形|肩宽|高挑|修长|挺拔|魁梧|结实|纤细|瘦|胖|矮|中等)/u.test(cleaned)
+  ) {
+    appendFieldValue(fields, "build", cleaned);
+    return;
+  }
+  if (!fields.complexion && /(肤色|白皙|冷白|小麦色|古铜色|黝黑|自然肤色)/u.test(cleaned)) {
+    appendFieldValue(fields, "complexion", cleaned);
+    return;
+  }
+  if (!fields.hair && /(发|头发|刘海|辫|髻|卷发|短发|长发)/u.test(cleaned)) {
+    appendFieldValue(fields, "hair", cleaned);
+    return;
+  }
+  if (!fields.outfit && /(身穿|穿着|服装|服饰|外套|风衣|长袍|裙|裤|靴|鞋|铠甲|夹克|卫衣|衬衫)/u.test(cleaned)) {
+    appendFieldValue(fields, "outfit", cleaned);
+    return;
+  }
+  if (!fields.accessories && /(配饰|佩戴|耳钉|耳环|项链|戒指|手表|腰带|头饰|武器|长剑|刀|背包|道具)/u.test(cleaned)) {
+    appendFieldValue(fields, "accessories", cleaned);
+    return;
+  }
+  if (!fields.face && /(脸|眉|眼|鼻|唇|胡|五官|疤|痣|瞳)/u.test(cleaned)) {
+    appendFieldValue(fields, "face", cleaned);
+    return;
+  }
+  if (!fields.scene_description && looksLikeSceneSegment(cleaned)) {
+    appendFieldValue(fields, "scene_description", cleaned);
+    return;
+  }
+
+  appendFieldValue(fields, "extra_visual", cleaned);
+};
+
+const extractInlineNamedDescription = (
+  line: string,
+): { name: string; gender?: string; rest?: string } | null => {
+  const cleaned = stripMarkdownPrefix(line);
+  const match = cleaned.match(
+    /^([\p{Script=Han}A-Za-z·.-]{2,20})(?:[（(]([^）)]{1,12})[）)])?\s*[:：\-—–]\s*([\s\S]+)$/u,
+  );
+  if (!match?.[1] || resolveColumnAlias(match[1])) {
+    return null;
+  }
+
+  return {
+    name: match[1].trim(),
+    gender: match[2]?.trim(),
+    rest: match[3]?.trim(),
+  };
+};
+
+const isGenericDerivedName = (name: string) =>
+  /^(男性|女性|男人|女人|男子|女子|少年|少女|青年|中年|老人|老者|角色|人物)$/u.test(name.trim());
+
+const buildEntryFromTextBlock = (
+  lines: string[],
+  startLineNo: number,
+): ParsedFieldEntry | null => {
+  const fields: ParsedRowFields = {};
+  const raw = lines.join("\n").trim();
+  if (!raw) {
+    return null;
+  }
+
+  for (const line of lines) {
+    const cleaned = stripMarkdownPrefix(line);
+    if (!cleaned) {
+      continue;
+    }
+
+    const keyValue = parseKeyValueLine(cleaned);
+    if (keyValue) {
+      appendFieldValue(fields, keyValue.field, keyValue.value);
+      continue;
+    }
+
+    const named = extractInlineNamedDescription(cleaned);
+    if (named) {
+      if (!fields.name && !fields.character_name) {
+        appendFieldValue(fields, "name", named.name);
+      }
+      if (!fields.gender && named.gender) {
+        appendFieldValue(fields, "gender", named.gender);
+      }
+      appendLooseSegment(fields, named.rest ?? "");
+      continue;
+    }
+
+    appendLooseSegment(fields, cleaned);
+  }
+
+  if (!fields.name && !fields.character_name) {
+    const derivedName = deriveCharacterNameFromText(raw);
+    if (derivedName && !isGenericDerivedName(derivedName)) {
+      fields.name = derivedName;
+    }
+  }
+
+  if (!fields.gender) {
+    const gender = normalizeGender(raw);
+    if (isExplicitGender(gender)) {
+      fields.gender = gender;
+    }
+  }
+
+  if (!hasKnownField(fields)) {
+    return null;
+  }
+
+  return {
+    lineNo: startLineNo,
+    fields,
+    raw,
+  };
+};
+
+const isBlockSeparatorLine = (line: string) => /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
+
+const startsNewLooseSection = (line: string) => {
+  const stripped = stripMarkdownPrefix(line);
+  if (!stripped) {
+    return false;
+  }
+  if (parseKeyValueLine(stripped)) {
+    return false;
+  }
+  return (
+    /^(角色|人物|主角|配角|character|char|person|role|npc)[\s\-_]*[0-9a-zA-Z一二三四五六七八九十]*[\s:：\-—–]+/iu.test(
+      stripped,
+    ) ||
+    /^[0-9一二三四五六七八九十]+[.、)\s]+/.test(line.trim()) ||
+    extractInlineNamedDescription(stripped) !== null
+  );
+};
+
+const parseBlockTextLocally = (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult | null => {
+  const entries: ParsedFieldEntry[] = [];
+  const lines = text.split(/\r?\n/);
+  let current: string[] = [];
+  let currentStartLine = 1;
+  let currentHasIdentity = false;
+
+  const flush = () => {
+    const entry = buildEntryFromTextBlock(current, currentStartLine);
+    if (entry) {
+      entries.push(entry);
+    }
+    current = [];
+    currentHasIdentity = false;
+  };
+
+  lines.forEach((line, index) => {
+    const lineNo = index + 1;
+    const cleaned = stripMarkdownPrefix(line);
+    if (!cleaned || isBlockSeparatorLine(cleaned)) {
+      flush();
+      return;
+    }
+
+    const keyValue = parseKeyValueLine(cleaned);
+    const startsIdentity =
+      keyValue?.field === "name" ||
+      keyValue?.field === "character_name" ||
+      extractInlineNamedDescription(cleaned) !== null;
+    if (current.length > 0 && ((startsIdentity && currentHasIdentity) || startsNewLooseSection(line))) {
+      flush();
+    }
+
+    if (current.length === 0) {
+      currentStartLine = lineNo;
+    }
+    current.push(line);
+    currentHasIdentity = currentHasIdentity || startsIdentity;
+  });
+  flush();
+
+  return entries.length > 0 ? parseFieldEntries(entries, sourceType, dedupe, options, entries.length) : null;
+};
+
+const buildEntryFromLooseDelimitedLine = (line: string, lineNo: number): ParsedFieldEntry | null => {
+  if (parseKeyValueLine(line)) {
+    return null;
+  }
+
+  const delimiters = ["|", "｜", "\t", "，", ","] as const;
+  const delimiter = delimiters
+    .map((item) => ({ item, cells: splitDelimitedLine(stripMarkdownPrefix(line), item) }))
+    .filter(({ cells }) => cells.length >= 2)
+    .sort((a, b) => b.cells.length - a.cells.length)[0];
+  if (!delimiter) {
+    return null;
+  }
+
+  const cells = delimiter.cells.map((cell) => cell.trim()).filter(Boolean);
+  if (cells.length < 2) {
+    return null;
+  }
+
+  const fields: ParsedRowFields = {};
+  const firstCell = cells.shift() ?? "";
+  const firstCellGender = normalizeGender(firstCell);
+  if (!isExplicitGender(firstCellGender)) {
+    const name = deriveCharacterNameFromText(firstCell) ?? firstCell.replace(/^(姓名|名字|角色名)\s*[:：]?\s*/u, "");
+    appendFieldValue(fields, "name", name);
+  }
+
+  for (const cell of cells) {
+    const keyValue = parseKeyValueLine(cell);
+    if (keyValue) {
+      appendFieldValue(fields, keyValue.field, keyValue.value);
+      continue;
+    }
+    appendLooseSegment(fields, cell);
+  }
+
+  return hasKnownField(fields)
+    ? {
+        lineNo,
+        fields,
+        raw: line,
+      }
+    : null;
+};
+
+const parseLooseDelimitedTextLocally = (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult | null => {
+  const entries = text
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, lineNo: index + 1 }))
+    .filter((item) => item.line.trim() && !isMarkdownTableSeparator(item.line))
+    .map((item) => buildEntryFromLooseDelimitedLine(item.line, item.lineNo))
+    .filter((entry): entry is ParsedFieldEntry => entry !== null);
+
+  return entries.length > 0 ? parseFieldEntries(entries, sourceType, dedupe, options, entries.length) : null;
+};
+
+const parseTextLocally = (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): ParseResult => {
+  const normalizedText = text.replace(/\r\n?/g, "\n").trim();
+  if (!normalizedText) {
+    return finalizePromptItems([], sourceType, 0, []);
+  }
+
+  const parsed =
+    parseJsonTextLocally(normalizedText, sourceType, dedupe, options) ??
+    parseHeaderDelimitedTextLocally(normalizedText, sourceType, dedupe, options) ??
+    parseLooseDelimitedTextLocally(normalizedText, sourceType, dedupe, options) ??
+    parseBlockTextLocally(normalizedText, sourceType, dedupe, options);
+
+  if (parsed) {
+    return parsed;
+  }
+
+  return finalizePromptItems([], sourceType, 1, [
+    {
+      line_no: 1,
+      reason: "unrecognized_text_format",
+      raw: normalizedText.slice(0, 1000),
+    },
+  ]);
 };
 
 const parseViaClaude = async (
@@ -385,8 +929,29 @@ const assertFileSize = (size: number, sourceType: ParseResult["source_type"]) =>
   }
 };
 
+const parseTextLike = async (
+  text: string,
+  sourceType: ParseResult["source_type"],
+  dedupe: boolean,
+  options?: ParseOptions,
+): Promise<ParseResult> => {
+  const mode = options?.parseMode ?? "auto";
+  if (mode === "local") {
+    return parseTextLocally(text, sourceType, dedupe, options);
+  }
+  if (mode === "claude") {
+    return parseViaClaude(text, sourceType, dedupe, options);
+  }
+
+  try {
+    return await parseViaClaude(text, sourceType, dedupe, options);
+  } catch {
+    return parseTextLocally(text, sourceType, dedupe, options);
+  }
+};
+
 export const parsePromptText = async (text: string, dedupe = false, options?: ParseOptions): Promise<ParseResult> => {
-  return parseViaClaude(text, "text", dedupe, options);
+  return parseTextLike(text, "text", dedupe, options);
 };
 
 export const parsePromptFile = async (file: File, dedupe = false, options?: ParseOptions): Promise<ParseResult> => {
@@ -409,10 +974,10 @@ export const parsePromptFile = async (file: File, dedupe = false, options?: Pars
       return parseXlsx(buffer, dedupe, options);
     case "md":
     case "txt":
-      return parseViaClaude(text, sourceType, dedupe, options);
+      return parseTextLike(text, sourceType, dedupe, options);
     case "docx": {
       const result = await mammoth.extractRawText({ buffer });
-      return parseViaClaude(result.value, "docx", dedupe, options);
+      return parseTextLike(result.value, "docx", dedupe, options);
     }
     default:
       throw new AppError("E_UNSUPPORTED_FILE_TYPE", `Unsupported file type: ${ext}.`, 400);

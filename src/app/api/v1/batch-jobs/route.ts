@@ -31,7 +31,7 @@ const readCreatePayload = async (req: NextRequest) => {
   }
 
   return req.json().catch(() => {
-    throw new AppError("E_INVALID_PARAM", "Invalid JSON body. Send raw text as text/plain so it can be parsed by Claude.", 400);
+    throw new AppError("E_INVALID_PARAM", "Invalid JSON body. Send raw text as text/plain so it can be parsed.", 400);
   });
 };
 
@@ -44,7 +44,7 @@ const createPortraitBatchFromText = async (req: NextRequest, sourceText: string,
   const dedupe = toOptionalBoolean(options.dedupe) ?? false;
   const styleKey = toOptionalString(options.style_key) ?? null;
   const parseResult = await parsePromptText(trimmedText, dedupe, {
-    parseMode: "claude",
+    parseMode: "auto",
     capability: "PORTRAIT",
     styleKey,
   });

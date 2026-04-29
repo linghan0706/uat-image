@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+const LAYOUT_CAP = 1.5;
+
 export function useLightbox(totalImages: number) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
@@ -61,19 +63,16 @@ export function useLightbox(totalImages: number) {
     setPanOffset({ x: 0, y: 0 });
   }, []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoomScale((prev) => {
-      const next = prev + (e.deltaY < 0 ? 0.25 : -0.25);
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      const next = zoomScale + (e.deltaY < 0 ? 0.25 : -0.25);
       const clamped = Math.min(5, Math.max(0.5, next));
-      // Reset pan when zooming back into phase 1
+      setZoomScale(clamped);
       if (clamped <= LAYOUT_CAP) setPanOffset({ x: 0, y: 0 });
-      return clamped;
-    });
-  }, []);
-
-  // Threshold: layout zoom vs detail (CSS scale) zoom
-  const LAYOUT_CAP = 1.5;
+    },
+    [zoomScale],
+  );
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
