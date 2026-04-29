@@ -59,6 +59,13 @@ export type BatchJob = {
   finished_at: string | null;
 };
 
+export type BatchJobListResponse = {
+  list: BatchJob[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
 export type JobItem = {
   id: string;
   item_no: string;

@@ -3,11 +3,12 @@
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { IconPlus, IconRefresh } from "@/components/icons";
 import { JobList } from "@/components/sidebar/JobList";
+import { ACTIVE_BATCH_STATUSES, COMPLETED_BATCH_STATUSES } from "@/lib/constants";
 
 export function Sidebar() {
   const { batchJobs, loadingJobs, refreshJobs, requestOpenPanel } = useWorkspace();
-  const runningCount = batchJobs.filter((job) => ["QUEUED", "RUNNING", "PENDING"].includes(job.status)).length;
-  const doneCount = batchJobs.filter((job) => ["SUCCESS", "PARTIAL_SUCCESS", "EXPORTED"].includes(job.status)).length;
+  const runningCount = batchJobs.filter((job) => ACTIVE_BATCH_STATUSES.has(job.status)).length;
+  const doneCount = batchJobs.filter((job) => COMPLETED_BATCH_STATUSES.has(job.status)).length;
 
   return (
     <div className="flex h-full flex-col">

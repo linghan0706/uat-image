@@ -300,7 +300,10 @@ const resolveModelAndRunParams = async (
 
   const model = selectedModelKey
     ? await getModelByKey(selectedModelKey, capability)
-    : await getDefaultModelByCapability(capability);
+    : await getDefaultModelByCapability(
+        capability,
+        capability === "THREE_VIEW" ? "IMAGE_TO_IMAGE" : undefined,
+      );
 
   if (selectedModelKey && !model.allowFrontSelect) {
     throw new AppError(

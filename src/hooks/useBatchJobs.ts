@@ -7,16 +7,25 @@ export function useBatchJobs() {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [errorText, setErrorText] = useState("");
   const listPollingRef = useRef<number | null>(null);
+  const refreshSeqRef = useRef(0);
 
   const refreshJobs = useCallback(async () => {
+    const refreshSeq = refreshSeqRef.current + 1;
+    refreshSeqRef.current = refreshSeq;
+
     try {
       setLoadingJobs(true);
       const jobs = await listBatchJobs();
+      if (refreshSeq !== refreshSeqRef.current) return;
       setBatchJobs(jobs);
+      setErrorText("");
     } catch (err) {
+      if (refreshSeq !== refreshSeqRef.current) return;
       setErrorText(err instanceof Error ? err.message : "任务列表加载失败");
     } finally {
-      setLoadingJobs(false);
+      if (refreshSeq === refreshSeqRef.current) {
+        setLoadingJobs(false);
+      }
     }
   }, []);
 

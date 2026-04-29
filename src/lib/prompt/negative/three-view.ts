@@ -6,12 +6,14 @@
 
 export const MJ_THREE_VIEW_NEGATIVE =
   "text, letters, words, watermark, logo, signature, label, " +
+  "painterly, oil painting, watercolor, sketch, rough concept art, " +
   "shadow, ground shadow, drop shadow, cast shadow, reflection, " +
   "action pose, dynamic pose, tilted head, turned head, " +
   "lens distortion, wide angle, fisheye, background props, " +
   "extra limbs, extra fingers, deformed hands, blurry";
 
 export const DIFFUSION_THREE_VIEW_NEGATIVE =
+  "painterly, oil painting, watercolor, sketch, rough concept art, style drift, " +
   "shadow, ground shadow, drop shadow, cast shadow, reflection, " +
   "extra limbs, extra fingers, missing fingers, deformed hands, " +
   "text, watermark, logo, signature, label, annotation, " +

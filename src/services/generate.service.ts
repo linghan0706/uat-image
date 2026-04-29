@@ -55,6 +55,31 @@ const toAbsoluteUrl = (urlOrPath: string) => {
   return new URL(urlOrPath, env.webBaseUrl).toString();
 };
 
+const isProviderReachableUrl = (value: string) => {
+  if (!/^https?:\/\//i.test(value)) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const isPrivateIpv4 =
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+    return (
+      hostname !== "localhost" &&
+      hostname !== "127.0.0.1" &&
+      hostname !== "0.0.0.0" &&
+      hostname !== "::1" &&
+      !hostname.endsWith(".local") &&
+      !isPrivateIpv4
+    );
+  } catch {
+    return false;
+  }
+};
+
 const getSourcePortraitReference = async (sourcePortraitId: bigint): Promise<PortraitReference> => {
   const source = await query<{
     id: bigint;
@@ -136,6 +161,17 @@ export const executeJobItem = async (itemId: bigint) => {
     if (!portraitRef) {
       return provider.generateImage({ ...baseInput, params: runParams });
     }
+
+    if (!isProviderReachableUrl(portraitRef.url)) {
+      logger.info(
+        { itemId: itemId.toString(), portraitUrl: portraitRef.url },
+        "Using inline source portrait because reference URL is not reachable by provider",
+      );
+      const dataUri = await downloadPortraitAsDataUri(portraitRef);
+      const inlineParams = buildProviderParams(runParams, dataUri);
+      return provider.generateImage({ ...baseInput, params: inlineParams });
+    }
+
     const urlParams = buildProviderParams(runParams, portraitRef.url);
     try {
       return await provider.generateImage({ ...baseInput, params: urlParams });

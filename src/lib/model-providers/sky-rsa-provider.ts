@@ -72,6 +72,25 @@ const stripReferenceFields = (params: PlainRecord): PlainRecord => {
   return rest;
 };
 
+const mimeFromReferenceImage = (imageRef: string): string => {
+  const lower = imageRef.toLowerCase();
+  if (lower.startsWith("data:image/")) {
+    const match = lower.match(/^data:([^;,]+)/);
+    if (match?.[1]) return match[1];
+  }
+  if (lower.includes(".webp") || lower.includes("image/webp")) return "image/webp";
+  if (lower.includes(".jpg") || lower.includes(".jpeg") || lower.includes("image/jpeg")) return "image/jpeg";
+  return "image/png";
+};
+
+const dataForInlineImage = (imageRef: string): string => {
+  if (!imageRef.startsWith("data:image/")) {
+    return imageRef;
+  }
+  const commaIndex = imageRef.indexOf(",");
+  return commaIndex >= 0 ? imageRef.slice(commaIndex + 1) : imageRef;
+};
+
 const buildTextToImageBody = (input: GenerateImageInput, params: PlainRecord, channel: string) => {
   const config = { ...params };
   if (input.negativePrompt) {
@@ -127,9 +146,12 @@ const buildImageToImageBody = (
   input: GenerateImageInput,
   params: PlainRecord,
   channel: string,
-  imageUrl: string,
+  imageRef: string,
 ) => {
   const config = stripReferenceFields(params);
+  if (config.count === undefined) {
+    config.count = 1;
+  }
   if (input.negativePrompt) {
     config.negative_prompt = input.negativePrompt;
   }
@@ -138,9 +160,20 @@ const buildImageToImageBody = (
     channel,
     model: input.modelKey,
     is_stream: false,
-    is_async: false,
-    prompt: input.prompt,
-    image: imageUrl,
+    prompt: [
+      {
+        role: "user",
+        parts: [
+          { text: input.prompt },
+          {
+            inline_data: {
+              data: dataForInlineImage(imageRef),
+              mime_type: mimeFromReferenceImage(imageRef),
+            },
+          },
+        ],
+      },
+    ],
     config,
   };
 };

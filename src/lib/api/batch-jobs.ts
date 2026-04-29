@@ -1,19 +1,40 @@
 import { apiRequest } from "@/lib/api/http-client";
-import type { BatchJob, CreateBatchJobPayload, ImageResult, JobDetail, JobItem } from "@/lib/api/image-workflow.types";
+import type {
+  BatchJob,
+  BatchJobListResponse,
+  CreateBatchJobPayload,
+  ImageResult,
+  JobDetail,
+  JobItem,
+} from "@/lib/api/image-workflow.types";
 
-const LIST_PAGE_SIZE = 20;
+const LIST_PAGE_SIZE = 100;
 const DETAIL_PAGE_SIZE = 100;
 
-export const listBatchJobs = async (): Promise<BatchJob[]> => {
-  const data = await apiRequest<{ list: BatchJob[] }>({
+const listBatchJobsPage = (page: number): Promise<BatchJobListResponse> =>
+  apiRequest<BatchJobListResponse>({
     url: "/api/v1/batch-jobs",
     method: "GET",
     params: {
-      page: 1,
+      page,
       page_size: LIST_PAGE_SIZE,
     },
   });
-  return data.list;
+
+export const listBatchJobs = async (): Promise<BatchJob[]> => {
+  const firstPage = await listBatchJobsPage(1);
+  const jobs = [...firstPage.list];
+  const pageSize = firstPage.page_size || LIST_PAGE_SIZE;
+  const total = firstPage.total ?? jobs.length;
+
+  for (let page = firstPage.page + 1; jobs.length < total; page += 1) {
+    const data = await listBatchJobsPage(page);
+    if (data.list.length === 0) break;
+    jobs.push(...data.list);
+    if (data.list.length < pageSize) break;
+  }
+
+  return jobs;
 };
 
 export const getBatchJobDetail = (jobId: string) =>

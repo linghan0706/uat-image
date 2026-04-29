@@ -4,7 +4,10 @@ import { AppError } from "@/lib/errors";
 import { getModelProvider } from "@/lib/model-providers";
 import type { ModelCapability } from "@/lib/model-providers/types";
 
-export const getDefaultModelByCapability = async (capability: Capability) => {
+export const getDefaultModelByCapability = async (
+  capability: Capability,
+  requiredProviderCapability?: ModelCapability,
+) => {
   const result = await query<ModelConfigRecord>(
     `
       SELECT
@@ -22,16 +25,27 @@ export const getDefaultModelByCapability = async (capability: Capability) => {
         updated_at AS "updatedAt"
       FROM model_configs
       WHERE capability = $1
-        AND is_default = TRUE
         AND enabled = TRUE
-      ORDER BY id ASC
-      LIMIT 1
+      ORDER BY is_default DESC, id ASC
     `,
     [capability],
   );
-  const model = result.rows[0];
+
+  const rows = result.rows;
+  const provider = getModelProvider();
+  const model =
+    requiredProviderCapability && provider.supportsCapability
+      ? rows.find((row) => provider.supportsCapability!(row.modelKey, requiredProviderCapability))
+      : rows.find((row) => row.isDefault) ?? rows[0];
+
   if (!model) {
-    throw new AppError("E_MODEL_NOT_ALLOWED", `No default model found for capability ${capability}.`, 400);
+    throw new AppError(
+      "E_MODEL_NOT_ALLOWED",
+      requiredProviderCapability
+        ? `No ${requiredProviderCapability} model found for capability ${capability}.`
+        : `No default model found for capability ${capability}.`,
+      400,
+    );
   }
   return model;
 };

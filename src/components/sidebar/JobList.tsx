@@ -4,6 +4,7 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { JobCard } from "./JobCard";
 import { useState } from "react";
 import { IconSpinner } from "@/components/icons";
+import { ACTIVE_BATCH_STATUSES, COMPLETED_BATCH_STATUSES, FAILED_BATCH_STATUSES } from "@/lib/constants";
 
 const filterOptions = [
   { value: "all", label: "全部" },
@@ -16,9 +17,9 @@ type FilterValue = (typeof filterOptions)[number]["value"];
 
 const statusGroups: Record<FilterValue, Set<string> | null> = {
   all: null,
-  active: new Set(["QUEUED", "RUNNING", "PENDING"]),
-  done: new Set(["SUCCESS", "PARTIAL_SUCCESS", "EXPORTED"]),
-  failed: new Set(["FAILED"]),
+  active: ACTIVE_BATCH_STATUSES,
+  done: COMPLETED_BATCH_STATUSES,
+  failed: FAILED_BATCH_STATUSES,
 };
 
 export function JobList() {
