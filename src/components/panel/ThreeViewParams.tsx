@@ -6,6 +6,8 @@ interface ThreeViewParamsProps {
   modelOptions: ModelOption[];
   size: string;
   setSize: (s: string) => void;
+  resolution: string;
+  setResolution: (s: string) => void;
   negative: string;
   setNegative: (s: string) => void;
   seed: string;
@@ -18,6 +20,8 @@ export function ThreeViewParams({
   modelOptions,
   size,
   setSize,
+  resolution,
+  setResolution,
   negative,
   setNegative,
   seed,
@@ -47,6 +51,18 @@ export function ThreeViewParams({
             onChange={(e) => setSize(e.target.value)}
             className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/50"
           />
+        </label>
+        <label className="text-sm">
+          <span className="text-zinc-400">清晰度</span>
+          <select
+            value={resolution}
+            onChange={(e) => setResolution(e.target.value)}
+            className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/50"
+          >
+            {["2K", "4K", "8K"].map((level) => (
+              <option key={level} value={level}>{level}</option>
+            ))}
+          </select>
         </label>
         <label className="text-sm">
           <span className="text-zinc-400">细节</span>

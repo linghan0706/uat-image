@@ -69,6 +69,22 @@ register("CSV 少尾列不应导致整文件解析失败", async () => {
   assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
 });
 
+register("CSV 解析传入 styleKey 时不污染行级 style_key", async () => {
+  const csv = [
+    "角色名,性别,年龄段,身高体型,场景描述,参考提示词",
+    "林婉,女性,青年,中等偏瘦,新闻编辑部外的玻璃走廊,cinematic realism",
+  ].join("\n");
+  const result = await parsePromptFile(toCsvFile(csv), false, {
+    parseMode: "local",
+    styleKey: "ancient_war_epic",
+  });
+  assert.equal(result.valid_count, 1);
+  assert.equal(result.prompts[0]?.style_key ?? null, null);
+  assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
+  assert.equal(result.prompts[0]?.character_profile?.gender, "female");
+  assert.equal(result.prompts[0]?.prompt_blocks?.part4, "cinematic realism");
+});
+
 (async () => {
   let failed = 0;
   for (const item of cases) {

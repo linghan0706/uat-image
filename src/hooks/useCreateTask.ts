@@ -37,6 +37,7 @@ export function useCreateTask(callbacks: {
   const [threeModelKey, setThreeModelKey] = useState("");
   const [threeModelOptions, setThreeModelOptions] = useState<ModelOption[]>([]);
   const [threeSize, setThreeSize] = useState("1920x1080");
+  const [threeResolution, setThreeResolution] = useState("4K");
   const [threeNegative, setThreeNegative] = useState("");
   const [threeSeed, setThreeSeed] = useState("");
 
@@ -62,12 +63,13 @@ export function useCreateTask(callbacks: {
       return {
         ...(modelKey ? { model_key: modelKey } : {}),
         size: threeSize,
+        resolution: threeResolution,
         negative_prompt: threeNegative || undefined,
         seed: threeSeed ? Number(threeSeed) : undefined,
       };
     }
     return {};
-  }, [capability, portraitBackgroundMode, portraitCount, portraitNegative, portraitSeed, portraitModelKey, threeModelKey, threeNegative, threeSeed, threeSize]);
+  }, [capability, portraitBackgroundMode, portraitCount, portraitNegative, portraitSeed, portraitModelKey, threeModelKey, threeNegative, threeResolution, threeSeed, threeSize]);
 
   const loadModelOptions = useCallback(async () => {
     if (capability === "THREE_VIEW") {
@@ -298,6 +300,8 @@ export function useCreateTask(callbacks: {
     threeModelOptions,
     threeSize,
     setThreeSize,
+    threeResolution,
+    setThreeResolution,
     threeNegative,
     setThreeNegative,
     threeSeed,

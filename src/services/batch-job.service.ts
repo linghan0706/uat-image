@@ -201,6 +201,14 @@ const portraitParamGuard = (params: Record<string, unknown>, modelKey: string) =
 };
 
 const THREE_VIEW_DEFAULT_SIZE = "1920x1080";
+const parseAndValidateResolution = (raw: unknown): string | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  const value = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (value === "2K" || value === "4K" || value === "8K") {
+    return value;
+  }
+  return undefined;
+};
 
 const parseAndValidateThreeViewSize = (raw: unknown): string => {
   const sizeStr = typeof raw === "string" ? raw.trim() : THREE_VIEW_DEFAULT_SIZE;
@@ -226,9 +234,11 @@ const threeViewParamGuard = (params: Record<string, unknown>, modelKey: string) 
     typeof params.negative_prompt === "string" && params.negative_prompt.trim()
       ? params.negative_prompt.trim()
       : undefined;
+  const resolution = parseAndValidateResolution(params.resolution ?? params.image_size);
   return {
     seed: params.seed ? Number(params.seed) : undefined,
     size: parseAndValidateThreeViewSize(params.size),
+    ...(resolution ? { resolution, image_size: resolution } : {}),
     aspect_ratio: "16:9",
     negative_prompt: resolveNegativePrompt({
       preset: "THREE_VIEW",

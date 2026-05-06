@@ -66,7 +66,7 @@ export function CreateTaskForm() {
   const createFromPortraitSources = task.capability === "THREE_VIEW" && activeSourcePortraitIds.length > 0;
   // 解析结果存在被丢弃的行时（如 missing_character_profile / placeholder_name_rejected），
   // 这些行不会进入最终提交的 prompts；放任用户继续提交会造成"少了几个人物而不自知"，
-  // 下游三视图阶段才弹出 character_profile 缺失错误。这里在提交阶段硬阻赛。
+  // 下游三视图阶段才弹出 character_profile 缺失错误。这里在提交阶段硬阻 。
   // 走 source_portrait_ids 的三视图链路无需依赖 parseResult，豁免此规则。
   const parseErrorsCount = task.importTask.parseResult?.errors.length ?? 0;
   const blockedByParseErrors = !createFromPortraitSources && parseErrorsCount > 0;
@@ -194,6 +194,8 @@ export function CreateTaskForm() {
             modelOptions={task.threeModelOptions}
             size={task.threeSize}
             setSize={task.setThreeSize}
+            resolution={task.threeResolution}
+            setResolution={task.setThreeResolution}
             negative={task.threeNegative}
             setNegative={task.setThreeNegative}
             seed={task.threeSeed}

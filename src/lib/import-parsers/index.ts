@@ -164,7 +164,6 @@ const buildPromptItemsFromCandidates = (
       ext_params: candidate.ext_params ?? {},
       prompt_blocks: candidate.part4 ? { part4: candidate.part4 } : undefined,
       character_profile: profile,
-      style_key: options?.styleKey ?? null,
       scene_description: normalizeMultiline(candidate.scene_description)?.slice(0, MAX_SCENE_DESCRIPTION_LENGTH) ?? null,
     });
   });
@@ -347,7 +346,6 @@ const parseFieldEntries = (
       ext_params: extParams,
       prompt_blocks: part4 ? { part4 } : undefined,
       character_profile: profile,
-      style_key: options?.styleKey ?? null,
       scene_description: sceneDescription ?? null,
     });
   });

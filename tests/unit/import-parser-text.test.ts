@@ -62,6 +62,23 @@ register("本地文本解析支持粘贴 CSV 表格", async () => {
   assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
 });
 
+register("本地文本解析传入 styleKey 时不污染行级 style_key", async () => {
+  const text = [
+    "角色名,性别,年龄段,身高体型,场景描述,参考提示词",
+    "林婉,女性,青年,中等偏瘦,新闻编辑部外的玻璃走廊,cinematic realism",
+  ].join("\n");
+
+  const result = await parsePromptText(text, false, {
+    parseMode: "local",
+    styleKey: "ancient_war_epic",
+  });
+  assert.equal(result.valid_count, 1);
+  assert.equal(result.prompts[0]?.style_key ?? null, null);
+  assert.equal(result.prompts[0]?.character_profile?.gender, "female");
+  assert.equal(result.prompts[0]?.scene_description, "新闻编辑部外的玻璃走廊");
+  assert.equal(result.prompts[0]?.prompt_blocks?.part4, "cinematic realism");
+});
+
 register("本地文本解析支持无表头分隔行", async () => {
   const text = "银翼｜非二元性别｜青年｜修长挺拔｜及肩银白色直发｜哑光黑色机能长外套｜未来城市高层停机坪边缘";
 

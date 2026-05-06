@@ -42,6 +42,10 @@ const sizeToAspectRatio = (value: unknown): string | null => {
 };
 
 const extractReferenceImageUrl = (params: PlainRecord): string | null => {
+  const firstImageUrl = params.first_image_url;
+  if (typeof firstImageUrl === "string" && firstImageUrl) {
+    return firstImageUrl;
+  }
   const direct = params.reference_image_url;
   if (typeof direct === "string" && direct) {
     return direct;
@@ -56,11 +60,13 @@ const extractReferenceImageUrl = (params: PlainRecord): string | null => {
 
 const stripModelInternalFields = (params: PlainRecord): PlainRecord => {
   const {
+    first_image_url: _firstImageUrl,
     reference_image_url: _referenceImageUrl,
     reference_images: _referenceImages,
     view_set: _viewSet,
     ...rest
   } = params;
+  void _firstImageUrl;
   void _referenceImageUrl;
   void _referenceImages;
   void _viewSet;
@@ -68,7 +74,7 @@ const stripModelInternalFields = (params: PlainRecord): PlainRecord => {
 };
 
 const isSupportedReferenceImage = (imageRef: string): boolean =>
-  /^https?:\/\//i.test(imageRef) || /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i.test(imageRef);
+  /^https?:\/\//i.test(imageRef) || /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$/.test(imageRef);
 
 const positiveIntegerOrDefault = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -136,7 +142,7 @@ const buildImageToImageBody = (
   if (!isSupportedReferenceImage(imageRef)) {
     throw new AppError(
       "E_INVALID_PARAM",
-      "SKY image-to-image only supports http(s) URLs or data:image/*;base64 reference images.",
+      "SKY image-to-image first_image_url only supports http(s) URLs or data:image/*;base64 reference images.",
       400,
     );
   }
@@ -152,7 +158,7 @@ const buildImageToImageBody = (
     model: input.modelKey,
     is_stream: false,
     is_async: false,
-    image_urls: imageRef,
+    first_image_url: imageRef,
     prompt: input.prompt,
     config,
   };
